@@ -189,7 +189,7 @@
       </div>
       <p>Enter the key Dymon shared with you to view MyShelf and QuestLog.</p>
       <p class="viewer-clue">Clue: Best city in the world?</p>
-      <label>Access key<input id="viewer-key" type="password" required maxlength="40" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <label>Access key<input id="viewer-key" type="password" required maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
       <p id="viewer-status" role="status"></p>
       <button id="unlock-viewer" type="submit" class="button primary">View TierShelf</button>
     </form>
@@ -200,12 +200,21 @@
       <h2 id="viewer-admin-heading">Viewer access</h2>
       <button id="close-viewer-admin" class="icon-button" type="button" aria-label="Close viewer access">×</button>
     </div>
-    <p>Share the key with friends so they can view MyShelf and QuestLog. Generating a key replaces the previous one.</p>
+    <p>Share the key with friends so they can view MyShelf and QuestLog. The key stays active until you replace it or turn off access.</p>
     <p id="viewer-setup" hidden>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/009_viewer_access.sql" target="_blank" rel="noopener">SB viewer access migration</a> to enable sharing.</p>
     <div class="viewer-admin-actions">
       <button id="generate-viewer-key" class="button primary" type="button">Generate viewer key</button>
       <button id="revoke-viewer-key" class="button" type="button">Turn off access</button>
     </div>
+    <details id="viewer-custom-options">
+      <summary>Set custom key</summary>
+      <form id="viewer-custom-form" method="dialog">
+        <p>Use 7–128 characters. Anyone with the key can view your collection, so a short key makes the clue easier to guess.</p>
+        <label>Custom key<input id="viewer-custom-key" type="password" required minlength="7" maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+        <button id="save-viewer-custom-key" class="button" type="submit">Save custom key</button>
+      </form>
+    </details>
+    <p id="viewer-custom-setup" hidden>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/010_custom_viewer_keys.sql" target="_blank" rel="noopener">SB custom key migration</a> to save a custom key.</p>
     <div id="viewer-key-output" hidden>
       <label for="generated-viewer-key">Shareable key</label>
       <input id="generated-viewer-key" readonly>

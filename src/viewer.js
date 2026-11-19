@@ -2,7 +2,10 @@ import { httpsUrl } from './posters.js'
 import { pokemonName } from './pokemon.js'
 
 const byId = (id) => document.getElementById(id)
-const format = /^Kuching-[A-Za-z0-9_-]{32}$/
+const validLength = (key) => {
+  const length = Array.from(key).length
+  return length >= 7 && length <= 128
+}
 
 function createKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(24))
@@ -22,6 +25,10 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
   const output = byId('viewer-key-output')
   const generated = byId('generated-viewer-key')
   const setup = byId('viewer-setup')
+  const customOptions = byId('viewer-custom-options')
+  const customSetup = byId('viewer-custom-setup')
+  const customKey = byId('viewer-custom-key')
+  const customSave = byId('save-viewer-custom-key')
   const titleDialog = byId('viewer-title-dialog')
   const art = byId('viewer-title-art')
   const details = byId('viewer-title-details')
@@ -31,6 +38,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
   function resetKeyOutput() {
     generated.value = ''
     output.hidden = true
+    customKey.value = ''
   }
 
   function setMode(current) {
@@ -47,6 +55,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     unlock.disabled = false
     generate.disabled = false
     revoke.disabled = false
+    customSave.disabled = false
     resetKeyOutput()
   }
 
@@ -57,6 +66,8 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     }
     if (mode() === 'dymon') {
       setup.hidden = true
+      customSetup.hidden = true
+      customOptions.open = false
       adminState.textContent = ''
       resetKeyOutput()
       admin.showModal()
@@ -72,7 +83,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     event.preventDefault()
     if (unlock.disabled || !db || mode() !== 'demo') return
     const submitted = key.value.trim()
-    if (!format.test(submitted)) {
+    if (!validLength(submitted)) {
       state.textContent = 'Enter the full viewer key Dymon shared.'
       return
     }
@@ -102,21 +113,25 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     key.value = ''
   })
 
-  async function changeKey(nextKey) {
+  async function changeKey(nextKey, custom = false) {
     if (!db || mode() !== 'dymon' || generate.disabled) return
     const version = accessVersion
     generate.disabled = true
     revoke.disabled = true
+    customSave.disabled = true
     adminState.textContent = ''
     setup.hidden = true
+    customSetup.hidden = true
     try {
       const { error } = await db.rpc('tiershelf_set_viewer_key', { access_key: nextKey })
       if (version !== accessVersion || mode() !== 'dymon') return
       if (error) {
         setup.hidden = error.code !== 'PGRST202'
-        adminState.textContent = setup.hidden ? 'Could not update viewer access. Try again.' : ''
+        customSetup.hidden = !(custom && error.code === '22023')
+        adminState.textContent = setup.hidden && customSetup.hidden ? 'Could not update viewer access. Try again.' : ''
       } else {
         if (nextKey) {
+          customKey.value = ''
           generated.value = nextKey
           output.hidden = false
           adminState.textContent = 'Key ready. Copy it before closing.'
@@ -131,12 +146,22 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
       if (version === accessVersion) {
         generate.disabled = false
         revoke.disabled = false
+        customSave.disabled = false
       }
     }
   }
 
   generate.addEventListener('click', () => changeKey(createKey()))
   revoke.addEventListener('click', () => changeKey(null))
+  byId('viewer-custom-form').addEventListener('submit', (event) => {
+    event.preventDefault()
+    const submitted = customKey.value.trim()
+    if (!validLength(submitted)) {
+      adminState.textContent = 'Use 7–128 characters for your custom key.'
+      return
+    }
+    changeKey(submitted, true)
+  })
   byId('close-viewer-admin').addEventListener('click', () => { if (!generate.disabled) admin.close() })
   admin.addEventListener('cancel', (event) => { if (generate.disabled) event.preventDefault() })
   admin.addEventListener('close', resetKeyOutput)

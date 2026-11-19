@@ -489,10 +489,15 @@ body[data-mode="viewer"] .mode { color: #c8c9ff; }
 .viewer-clue, #viewer-status, #viewer-admin-status { color: var(--muted); }
 #viewer-status:empty, #viewer-admin-status:empty { display: none; }
 #viewer-form label { margin-bottom: 1rem; }
-#viewer-setup a { color: var(--accent); }
+#viewer-setup a, #viewer-custom-setup a { color: var(--accent); }
 #viewer-key-output { display: grid; gap: .65rem; }
 #generated-viewer-key { width: 100%; padding: .6rem; background: #171a1b; border: 1px solid var(--border); border-radius: 6px; color: inherit; }
 .viewer-title-art { display: block; width: 110px; max-height: 165px; margin: 0 auto 1rem; object-fit: contain; }
 #viewer-title-details { display: grid; grid-template-columns: auto 1fr; gap: .6rem .9rem; }
 #viewer-title-details dt { color: var(--muted); }
 #viewer-title-details dd { margin: 0; overflow-wrap: anywhere; }
+
+#viewer-custom-options { margin-bottom: 1rem; }
+#viewer-custom-options summary { cursor: pointer; font-weight: 700; }
+#viewer-custom-form p { color: var(--muted); }
+#viewer-custom-form button { margin-top: .65rem; }
