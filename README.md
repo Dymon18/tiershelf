@@ -18,3 +18,8 @@ Install Node.js 24, then run `npm ci` and `npm run dev`. Run `npm run build` to 
 8. Push your changes to GitHub. Under **Settings → Pages**, select **GitHub Actions** as the source. Run the **Deploy TierShelf** workflow if enabling Pages after the first push.
 
 Use **Dymon login** to sign in and save a title. Open the site on another device and sign in with the same GitHub account to check that the title appears.
+
+
+## Credits
+
+The Demo mode frame uses the T. rex sprite from the [Chromium offline sprite sheet](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-offline-sprite.png). [Chromium license](public/credits/chromium-license.txt)

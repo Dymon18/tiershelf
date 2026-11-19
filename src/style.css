@@ -249,3 +249,57 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 .title-suggestions label { min-width: 0; }
 .title-suggestions select { text-overflow: ellipsis; }
 .title-suggestions .button { margin-top: .5rem; }
+
+.mode-frame {
+  --frame-rail: 18px;
+  --frame-tile: url('/demo-frame.png');
+  --frame-tile-size: 18px;
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+  opacity: .65;
+}
+
+body[data-mode="dymon"] .mode-frame {
+  --frame-tile: url('/dymon-frame.png');
+  --frame-tile-size: 36px;
+  opacity: .48;
+}
+
+.mode-frame span {
+  position: absolute;
+  background-image: var(--frame-tile);
+  background-size: var(--frame-tile-size) var(--frame-tile-size);
+}
+
+.mode-frame-top,
+.mode-frame-bottom {
+  left: 0;
+  right: 0;
+  height: var(--frame-rail);
+  background-repeat: repeat-x;
+}
+
+.mode-frame-top { top: 0; }
+.mode-frame-bottom { bottom: 0; }
+
+.mode-frame-left,
+.mode-frame-right {
+  top: var(--frame-rail);
+  bottom: var(--frame-rail);
+  width: var(--frame-rail);
+  background-repeat: repeat-y;
+}
+
+.mode-frame-left { left: 0; }
+.mode-frame-right { right: 0; }
+
+@media (max-width: 600px) {
+  .mode-frame {
+    --frame-rail: 12px;
+    --frame-tile-size: 12px;
+  }
+
+  body[data-mode="dymon"] .mode-frame { --frame-tile-size: 24px; }
+}

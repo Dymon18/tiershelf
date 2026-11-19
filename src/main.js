@@ -898,6 +898,7 @@ byId('clear-categories').addEventListener('click', () => {
 function setMode(isOwner, records) {
   frameVersion++
   ownerMode = isOwner
+  document.body.dataset.mode = isOwner ? 'dymon' : 'demo'
   entries = records
   filter = 'movie'
   activeCategories.clear()
