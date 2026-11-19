@@ -497,12 +497,13 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 #recommendation-form textarea { font: inherit; resize: vertical; }
 #recommendation-form p, #recommendation-status, #recommendation-list p { color: var(--muted); }
 #recommendation-status:empty { display: none; }
-#recommendation-setup a { color: var(--accent); }
+#recommendation-setup a, #recommendation-delete-setup a { color: var(--accent); }
 #recommendation-list { display: grid; gap: .7rem; padding: 0; list-style: none; }
 #recommendation-list > li { padding: .8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); overflow-wrap: anywhere; }
 #recommendation-list h3 { margin: 0; }
 #recommendation-list p { margin: .35rem 0; }
 #recommendation-list .button { margin-top: .35rem; }
+.recommendation-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .recommendation-note { white-space: pre-wrap; }
 
 body[data-mode="viewer"] .mode { color: #c8c9ff; }

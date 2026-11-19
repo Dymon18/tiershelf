@@ -14,6 +14,7 @@ export function createMailbox(db, openRecommendation) {
   const send = byId('send-recommendation')
   const status = byId('recommendation-status')
   const setup = byId('recommendation-setup')
+  const deleteSetup = byId('recommendation-delete-setup')
   const list = byId('recommendation-list')
   let mode = 'demo'
   let viewerKey = null
@@ -22,6 +23,7 @@ export function createMailbox(db, openRecommendation) {
   function setBusy(busy) {
     close.disabled = busy
     send.disabled = busy
+    for (const action of list.querySelectorAll('button')) action.disabled = busy
   }
 
   function clear() {
@@ -30,8 +32,38 @@ export function createMailbox(db, openRecommendation) {
     list.replaceChildren()
     list.hidden = true
     setup.hidden = true
+    deleteSetup.hidden = true
     status.textContent = ''
     setBusy(false)
+  }
+
+  async function deleteRecommendation(recommendation, item, remove, request) {
+    if (close.disabled || mode !== 'dymon' || request !== version) return
+    if (!window.confirm(`Delete the recommendation for “${recommendation.title}”?`)) return
+
+    setBusy(true)
+    deleteSetup.hidden = true
+    status.textContent = 'Deleting recommendation…'
+    let focusTarget = remove
+    try {
+      const { error } = await db.from('tiershelf_recommendations').delete().eq('id', recommendation.id)
+      if (request !== version) return
+      if (error) throw error
+      const neighbor = item.nextElementSibling ?? item.previousElementSibling
+      focusTarget = neighbor?.querySelector('.danger') ?? close
+      item.remove()
+      list.hidden = !list.childElementCount
+      status.textContent = list.hidden ? 'Recommendation deleted. The mailbox is empty.' : 'Recommendation deleted.'
+    } catch (error) {
+      if (request !== version) return
+      deleteSetup.hidden = error.code !== '42501'
+      status.textContent = deleteSetup.hidden ? 'Could not delete this recommendation. Try again.' : ''
+    } finally {
+      if (request === version) {
+        setBusy(false)
+        focusTarget.focus()
+      }
+    }
   }
 
   function renderRecommendation(recommendation, request) {
@@ -52,33 +84,43 @@ export function createMailbox(db, openRecommendation) {
       item.append(message)
     }
     const linked = recommendation.tiershelf_queue
+    const actions = document.createElement('div')
+    actions.className = 'recommendation-actions'
     if (Array.isArray(linked) ? linked.length : linked) {
       const filed = document.createElement('p')
       filed.textContent = 'In SideQuest'
       item.append(filed)
-      return item
+    } else {
+      const add = document.createElement('button')
+      add.type = 'button'
+      add.className = 'button'
+      add.textContent = 'Add to SideQuest'
+      add.addEventListener('click', async () => {
+        if (close.disabled || mode !== 'dymon' || request !== version) return
+        setBusy(true)
+        status.textContent = ''
+        try {
+          const opened = await openRecommendation(recommendation)
+          if (request !== version) return
+          if (opened) dialog.close()
+          else status.textContent = 'Could not open the QuestLog editor. Try again.'
+        } catch {
+          if (request === version) status.textContent = 'Could not open the QuestLog editor. Try again.'
+        } finally {
+          if (request === version) setBusy(false)
+        }
+      })
+      actions.append(add)
     }
 
-    const add = document.createElement('button')
-    add.type = 'button'
-    add.className = 'button'
-    add.textContent = 'Add to SideQuest'
-    add.addEventListener('click', async () => {
-      if (close.disabled || mode !== 'dymon' || request !== version) return
-      setBusy(true)
-      status.textContent = ''
-      try {
-        const opened = await openRecommendation(recommendation)
-        if (request !== version) return
-        if (opened) dialog.close()
-        else status.textContent = 'Could not open the QuestLog editor. Try again.'
-      } catch {
-        if (request === version) status.textContent = 'Could not open the QuestLog editor. Try again.'
-      } finally {
-        if (request === version) setBusy(false)
-      }
-    })
-    item.append(add)
+    const remove = document.createElement('button')
+    remove.type = 'button'
+    remove.className = 'button danger'
+    remove.textContent = 'Delete'
+    remove.setAttribute('aria-label', `Delete recommendation for ${recommendation.title}`)
+    remove.addEventListener('click', () => deleteRecommendation(recommendation, item, remove, request))
+    actions.append(remove)
+    item.append(actions)
     return item
   }
 
