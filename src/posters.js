@@ -160,18 +160,33 @@ export async function findEntryDetails({ title, type, year, page, author, match 
   const dates = type === 'anime' ? [...values('P580'), ...values('P577')] : values('P577')
   const years = dates.filter((date) => date.precision >= 9)
     .map((date) => Number(date.time.match(/^\+(\d+)-/)?.[1])).filter((value) => value > 0 && value <= 9999)
-  const genreIds = [...new Set(values('P136').map((value) => value.id).filter(Boolean))].slice(0, 20)
-  const authorIds = type === 'book' ? values('P50').map((value) => value.id).filter(Boolean).slice(0, 5) : []
-  const ids = [...new Set([...genreIds, ...authorIds])]
+  const entityIds = (property, limit = 5) => [...new Set(values(property).map((value) => value.id).filter(Boolean))].slice(0, limit)
+  const genreIds = entityIds('P136', 20)
+  const authorIds = type === 'book' ? entityIds('P50') : []
+  const movieProperties = { directors: 'P57', studios: 'P272', languages: 'P364', countries: 'P495', franchises: 'P8345' }
+  const movieIds = type === 'movie'
+    ? Object.fromEntries(Object.entries(movieProperties).map(([key, property]) => [key, entityIds(property)]))
+    : {}
+  if (type === 'movie') movieIds.franchises = [...new Set([...movieIds.franchises, ...entityIds('P179')])]
+  const ids = [...new Set([...genreIds, ...authorIds, ...Object.values(movieIds).flat()])]
   let labels = {}
   if (ids.length) {
     try { labels = await wikidata(ids, 'labels') } catch { /* Release year is still available. */ }
   }
   const label = (id) => labels[id]?.labels?.en?.value
+  const movie = Object.fromEntries(Object.entries(movieIds).map(([key, refs]) => [key, refs.map(label).filter(Boolean)]))
+  if (type === 'movie') {
+    const units = { Q7727: 1, Q11574: 1 / 60, Q25235: 60 }
+    const minutes = values('P2047')
+      .map((value) => Math.round(Number(value.amount) * units[value.unit?.split('/').at(-1)]))
+      .find((value) => value > 0 && value <= 1440)
+    if (minutes) movie.runtime = minutes
+  }
   return {
     ...source,
     year: years.length ? Math.min(...years) : undefined,
     genres: genreIds.map(label).filter(Boolean),
+    movie,
     author: authorIds.map(label).filter(Boolean).join(', '),
   }
 }

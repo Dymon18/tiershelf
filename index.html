@@ -39,6 +39,7 @@
             <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
             <button id="clear-categories" class="button" type="button">Clear</button>
             <div id="filter-options" class="category-options"></div>
+            <div id="movie-filters"></div>
           </div>
         </details>
         <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
@@ -83,6 +84,10 @@
         <p id="autofill-status" role="status"></p>
         <label id="entry-author-field" hidden>Author <input id="entry-author" maxlength="200" autocomplete="off"></label>
         <label>Release year <input id="entry-year" type="number" min="1" max="9999" step="1"></label>
+        <fieldset id="movie-details" class="category-picker" hidden>
+          <legend>Movie details</legend>
+          <div id="movie-fields" class="movie-fields"></div>
+        </fieldset>
         <fieldset class="category-picker">
           <legend id="category-legend">Categories</legend>
           <div id="entry-categories" class="category-options"></div>

@@ -17,6 +17,14 @@ const basicColumns = 'id,title,media_type,grade'
 const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
 const fullColumns = detailColumns + ',author'
 const rankedColumns = fullColumns + ',tier_position'
+const movieColumn = ',movie_details'
+const movieFields = {
+  directors: 'Director', studios: 'Studio', franchises: 'Franchise',
+  languages: 'Original language', countries: 'Country of origin', runtime: 'Runtime (minutes)',
+}
+const movieFacets = { directors: 'Director', studios: 'Studio', franchises: 'Franchise',
+  languages: 'Language', countries: 'Country', decade: 'Decade', runtime: 'Runtime' }
+const movieInputs = {}
 const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
@@ -79,6 +87,23 @@ let entries = demo
 let filter = 'movie'
 const activeCategories = new Set()
 let canRank = true
+const movieFilterValues = new Map()
+for (const [key, name] of Object.entries(movieFields)) {
+  const label = document.createElement('label')
+  const input = document.createElement('input')
+  input.id = 'movie-' + key
+  if (key === 'runtime') {
+    input.type = 'number'
+    input.min = '1'
+    input.max = '1440'
+  } else {
+    input.maxLength = 250
+    input.placeholder = 'Separate multiple values with commas'
+  }
+  label.append(name, input)
+  byId('movie-fields').append(label)
+  movieInputs[key] = input
+}
 let archiveDetails = true
 let archiveColumns = fullColumns
 let selectedCategories = new Set()
@@ -110,13 +135,57 @@ function categoriesFor(type) {
   return [...unique.values()].sort((a, b) => a.localeCompare(b))
 }
 
+function movieFacetValues(entry, key) {
+  if (key === 'decade') return entry.release_year ? [Math.floor(entry.release_year / 10) * 10 + 's'] : []
+  if (key === 'runtime') {
+    const minutes = entry.movie_details?.runtime
+    return minutes > 0 ? [minutes <= 90 ? '90 min or less' : minutes <= 120 ? '91–120 min' : 'Over 120 min'] : []
+  }
+  const values = entry.movie_details?.[key]
+  return Array.isArray(values) ? values.filter((value) => typeof value === 'string') : []
+}
+
+function renderMovieFilters() {
+  const panel = byId('movie-filters')
+  const focused = document.activeElement?.dataset.movieFacet
+  panel.replaceChildren()
+  if (filter !== 'movie') return
+  const movies = entries.filter((entry) => entry.media_type === 'movie')
+  for (const [key, name] of Object.entries(movieFacets)) {
+    const options = new Map()
+    for (const entry of movies) {
+      for (const value of movieFacetValues(entry, key)) options.set(normalizeTitle(value), value)
+    }
+    if (!options.has(movieFilterValues.get(key))) movieFilterValues.delete(key)
+    if (!options.size) continue
+    const select = document.createElement('select')
+    select.dataset.movieFacet = key
+    select.add(new Option('Any ' + name.toLowerCase(), ''))
+    for (const [code, value] of [...options].sort((a, b) => a[1].localeCompare(b[1]))) {
+      select.add(new Option(value, code))
+    }
+    select.value = movieFilterValues.get(key) ?? ''
+    select.addEventListener('change', () => {
+      if (select.value) movieFilterValues.set(key, select.value)
+      else movieFilterValues.delete(key)
+      render()
+    })
+    const label = document.createElement('label')
+    label.append(name, select)
+    panel.append(label)
+    if (focused === key) select.focus()
+  }
+}
+
 function renderCategoryFilter() {
+  renderMovieFilters()
   const heading = filter === 'book' ? 'Genres' : 'Categories'
   categoryFilter.hidden = ownerMode && !archiveDetails
   const options = categoriesFor(filter)
   const available = new Set(options.map((name) => name.toLowerCase()))
   for (const key of activeCategories) if (!available.has(key)) activeCategories.delete(key)
-  byId('category-filter-label').textContent = activeCategories.size ? `${heading} (${activeCategories.size})` : heading
+  const count = activeCategories.size + (filter === 'movie' ? movieFilterValues.size : 0)
+  byId('category-filter-label').textContent = count ? `${heading} (${count})` : heading
   const focused = document.activeElement?.dataset.category
   filterOptions.replaceChildren()
   let restoreFocus
@@ -155,6 +224,8 @@ function render() {
   }
   const visible = shelf.filter((entry) =>
     matchCategory(entry) &&
+    (filter !== 'movie' || [...movieFilterValues].every(([key, value]) =>
+      movieFacetValues(entry, key).some((item) => normalizeTitle(item) === value))) &&
     (normalizeTitle(entry.title).includes(query) || normalizeTitle(entry.author ?? '').includes(query)),
   )
   byId('count').textContent = visible.length === shelf.length
@@ -183,7 +254,7 @@ function render() {
     if (!ranked.length) {
       const empty = document.createElement('span')
       empty.className = 'empty'
-      empty.textContent = query || activeCategories.size ? 'No matching titles' : 'No titles yet'
+      empty.textContent = query || activeCategories.size || movieFilterValues.size ? 'No matching titles' : 'No titles yet'
       cards.append(empty)
     }
 
@@ -338,6 +409,10 @@ function openEditor(entry, defaultGrade = 'A') {
   byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
   authorInput.value = entry?.author ?? ''
+  for (const [key, input] of Object.entries(movieInputs)) {
+    const value = entry?.movie_details?.[key]
+    input.value = key === 'runtime' ? value ?? '' : (Array.isArray(value) ? value.join(', ') : '')
+  }
   typeInput.value = entry?.media_type ?? filter
   byId('entry-details').hidden = ownerMode && !archiveDetails
   byId('entry-artwork').hidden = ownerMode && !archiveDetails
@@ -361,6 +436,9 @@ function openEditor(entry, defaultGrade = 'A') {
 
 function renderTypeFields() {
   const isBook = typeInput.value === 'book'
+  const movieDetails = byId('movie-details')
+  movieDetails.hidden = typeInput.value !== 'movie' || (ownerMode && !archiveColumns.includes(movieColumn))
+  movieDetails.disabled = movieDetails.hidden
   byId('entry-author-field').hidden = !isBook || (ownerMode && !archiveColumns.includes(',author'))
   byId('artwork-legend').textContent = isBook ? 'Cover' : 'Poster'
   posterButton.textContent = isBook ? 'Find cover' : 'Find poster'
@@ -621,6 +699,8 @@ const genreAliases = {
   anime: /\banime\b/,
   'k drama': /korean drama|^k drama$/,
   'tv show': /television (series|show|program)|^tv show$/,
+  musical: /musical/,
+  action: /\baction\b/,
 }
 
 autofillButton.addEventListener('click', async () => {
@@ -657,19 +737,46 @@ autofillButton.addEventListener('click', async () => {
       filled.push('author')
     }
     const genres = (details.genres ?? []).map(normalizeTitle)
+    const movie = details.movie ?? {}
+    if (type === 'movie' && !byId('movie-details').hidden) {
+      for (const [key, input] of Object.entries(movieInputs)) {
+        const value = movie[key]
+        const text = Array.isArray(value) ? value.filter((name) => name.length <= 250).join(', ') : value
+        if (!input.value.trim() && text && String(text).length <= 250) {
+          input.value = text
+          filled.push(movieFields[key].toLowerCase())
+        }
+      }
+    }
     const knownCategories = categoriesFor(type)
     if (type === 'movie') {
-      for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller']) {
+      for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller', 'Pixar', 'Sony Pictures Animation']) {
         if (!knownCategories.some((item) => normalizeTitle(item) === normalizeTitle(name))) knownCategories.push(name)
       }
     }
+    const companies = [...(movie.studios ?? []), ...(movie.franchises ?? [])].map(normalizeTitle)
+    const movieTags = {
+      'studio ghibli': /\bstudio ghibli\b/,
+      dreamworks: /\bdreamworks\b/,
+      disney: /\bdisney\b/,
+      pixar: /\bpixar\b/,
+      marvel: /\bmarvel\b/,
+      barbie: /\bbarbie\b/,
+      'sony pictures animation': /\bsony pictures animation\b/,
+    }
     const categories = knownCategories.filter((name) => {
       const key = normalizeTitle(name)
+      if (type === 'movie' && movieTags[key]?.test(companies.join(' '))) return true
+      if (type === 'movie' && key === 'animation' &&
+        /studio ghibli|pixar|sony pictures animation|dreamworks animation|disney animation/.test(companies.join(' '))) return true
+      if (type === 'movie' && key === 'barbie' && /^barbie\b/.test(normalizeTitle(details.title ?? title))) return true
       return genres.some((genre) => genre === key || genre === key + ' film' || genre === key + ' novel' ||
         genreAliases[key]?.test(genre))
     })
-    if (!selectedCategories.size && categories.length) {
-      selectedCategories = new Set(categories.slice(0, 30))
+    const selectedKeys = new Set([...selectedCategories].map(normalizeTitle))
+    const additions = categories.filter((name) => !selectedKeys.has(normalizeTitle(name))).slice(0, Math.max(0, 30 - selectedCategories.size))
+    if (additions.length) {
+      for (const name of additions) selectedCategories.add(name)
       renderCategoryPicker()
       filled.push(type === 'book' ? 'genres' : 'categories')
     }
@@ -730,6 +837,11 @@ byId('entry-form').addEventListener('submit', (event) => {
   if (!ownerMode || archiveColumns.includes(',author')) {
     record.author = typeInput.value === 'book' ? authorInput.value.trim() || null : null
   }
+  if (!ownerMode || archiveColumns.includes(movieColumn)) {
+    record.movie_details = record.media_type === 'movie' ? Object.fromEntries(Object.entries(movieInputs)
+      .filter(([, input]) => input.value.trim())
+      .map(([key, input]) => [key, key === 'runtime' ? Number(input.value) : input.value.split(',').map((value) => value.trim()).filter(Boolean)])) : null
+  }
   if ((!ownerMode || canRank) && editing &&
     (editing.grade !== record.grade || editing.media_type !== record.media_type)) record.tier_position = null
   else if (!ownerMode && editing) record.tier_position = editing.tier_position
@@ -739,6 +851,7 @@ deleteButton.addEventListener('click', () => submitEditor(() => remove(editing))
 filters.forEach((button) => button.addEventListener('click', () => {
   filter = button.dataset.filter
   activeCategories.clear()
+  movieFilterValues.clear()
   categoryFilter.open = false
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
   render()
@@ -747,6 +860,7 @@ search.addEventListener('input', render)
 categoryMatch.addEventListener('change', render)
 byId('clear-categories').addEventListener('click', () => {
   activeCategories.clear()
+  movieFilterValues.clear()
   render()
 })
 
@@ -756,6 +870,7 @@ function setMode(isOwner, records) {
   entries = records
   filter = 'movie'
   activeCategories.clear()
+  movieFilterValues.clear()
   categoryFilter.open = false
   search.value = ''
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
@@ -820,9 +935,17 @@ if (db) {
       }
       const loadEntries = (columns) => db.from('tiershelf_entries')
         .select(columns).order('created_at').order('id')
-      let columns = rankedColumns
+      let columns = rankedColumns + movieColumn
       let result = await loadEntries(columns)
       const missingColumn = () => ['42703', 'PGRST204'].includes(result.error?.code)
+      if (missingColumn()) {
+        columns = rankedColumns
+        result = await loadEntries(columns)
+      }
+      if (missingColumn()) {
+        columns = fullColumns + movieColumn
+        result = await loadEntries(columns)
+      }
       if (missingColumn()) {
         columns = fullColumns
         result = await loadEntries(columns)
@@ -844,11 +967,12 @@ if (db) {
         return
       }
       archiveColumns = columns
-      canRank = columns === rankedColumns
+      canRank = columns.includes(',tier_position')
       archiveDetails = columns !== basicColumns
       setMode(true, data)
       if (!archiveDetails) status('Run the Supabase entry details migration to save categories and posters.')
       else if (!columns.includes(',author')) status('Run the Supabase book author migration to save authors.')
+      else if (!columns.includes(movieColumn) && canRank) status('Run the Supabase movie details migration to save the new movie fields.')
       else if (!canRank) status('Run the Supabase tier order migration to save custom positions.')
       else status('')
     }, 0)
