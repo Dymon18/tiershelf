@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A personal tier list for movies, books, and anime.">
+  <meta name="theme-color" content="#151718">
+  <title>TierShelf</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="frame nav">
+      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>TierShelf</a>
+      <div class="account"><span id="mode" class="mode">Demo mode</span><button id="account-button" class="button">Dymon login</button></div>
+    </div>
+  </header>
+  <main class="frame">
+    <section class="intro" aria-labelledby="title">
+      <div>
+        <h1 id="title">The archive<span>.</span></h1>
+        <p id="description">Rank the movies, books, and anime you finish.</p>
+      </div>
+      <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
+    </section>
+    <section aria-label="Tier list">
+      <div class="toolbar">
+        <div class="filters" role="group" aria-label="Filter by media type">
+          <button data-filter="all" aria-pressed="true">All titles</button>
+          <button data-filter="movie" aria-pressed="false">Movies</button>
+          <button data-filter="book" aria-pressed="false">Books</button>
+          <button data-filter="anime" aria-pressed="false">Anime</button>
+        </div>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
+      </div>
+      <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
+      <div id="board" class="board"></div>
+      <p id="status" class="status" role="status"></p>
+    </section>
+    <footer><span id="footer-text">Demo edits reset when you refresh or close this tab.</span></footer>
+  </main>
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="entry-form">
+      <div class="dialog-heading"><h2 id="editor-title">Add title</h2><button type="button" class="icon-button" id="close-editor" aria-label="Close editor">×</button></div>
+      <label>Title<input id="entry-title" maxlength="200" required autocomplete="off"></label>
+      <div class="fields">
+        <label>Media type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Anime</option></select></label>
+        <label>Grade<select id="entry-grade"></select></label>
+      </div>
+      <p id="editor-status" role="status"></p>
+      <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
+    </form>
+  </dialog>
+  <dialog id="login-dialog" aria-labelledby="login-title">
+    <div class="dialog-heading"><h2 id="login-title">Dymon mode</h2><button type="button" class="icon-button" id="close-login" aria-label="Close login">×</button></div>
+    <p id="login-description">Sign in with GitHub to open your private archive.</p>
+    <button class="button primary" id="github-login">Continue with GitHub</button>
+  </dialog>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

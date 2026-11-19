@@ -1,0 +1,20 @@
+{
+  "name": "tiershelf",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base=./"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.1"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  }
+}
