@@ -14,6 +14,13 @@ const tableName = 'tiershelf_queue'
 const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
 const artworkColumns = basicColumns + ',artwork_url'
 const priorityColumn = ',queue_position'
+const readingColumns = ',reading_tags,source_recommendation_id'
+const standardColumns = artworkColumns + priorityColumn
+const readingTags = new Map([
+  ['cozy', 'Happy & cozy'], ['gut-wrenching', 'Gut-wrenching'],
+  ['fast-paced', 'Fast-paced'], ['slow-paced', 'Slow-paced'],
+  ['straightforward', 'Straightforward language'], ['light-read', 'Light read'],
+])
 const queueHash = '#questlog'
 const queueHashes = new Set([queueHash, '#pokequeue'])
 const byId = (id) => document.getElementById(id)
@@ -50,6 +57,18 @@ export function createQueue(db, openTierEditor) {
   const archiveButton = byId('show-archive')
   const queueButton = byId('show-queue')
   const compactButton = byId('queue-compact')
+  const readingFilter = byId('queue-reading-filter')
+  const readingTagField = byId('queue-reading-tags')
+  const readingInputs = new Map()
+  for (const [id, name] of readingTags) {
+    readingFilter.add(new Option(name, id))
+    const label = cell('label', name)
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    label.prepend(input)
+    readingTagField.append(label)
+    readingInputs.set(id, input)
+  }
   const sourceFilters = new Map(sources.map(({ key }) => [key, byId('queue-filter-' + key)]))
   let compact = false
   let promoted = new Set()
@@ -59,12 +78,12 @@ export function createQueue(db, openTierEditor) {
   let lookupVersion = 0
   let matches = []
   let autofilledAuthor = ''
-  let columns = artworkColumns + priorityColumn
+  let columns = standardColumns + readingColumns
   let owner = false
   let viewer = false
   let version = 0
   let entries = []
-  let loading = false
+  let loadRequest = null
   let loaded = false
   let pending = false
   let activeEntry = null
@@ -143,14 +162,16 @@ export function createQueue(db, openTierEditor) {
 
     const entriesInBucket = group.filter((entry) => entry.source === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
-    if (entriesInBucket.length) {
+    const tag = type === 'book' ? readingFilter.value : ''
+    const visibleEntries = tag ? entriesInBucket.filter((entry) => entry.reading_tags?.includes(tag)) : entriesInBucket
+    if (visibleEntries.length) {
       const list = document.createElement('ol')
       list.className = 'queue-entry-grid'
-      entriesInBucket.forEach((entry, index) => {
+      visibleEntries.forEach((entry, index) => {
         const card = document.createElement('li')
         card.className = 'queue-entry'
         card.dataset.queueRow = entry.id
-        const rank = cell('span', String(index + 1))
+        const rank = cell('span', String((tag ? entriesInBucket.indexOf(entry) : index) + 1))
         rank.className = 'queue-rank'
         const text = document.createElement('div')
         text.className = 'queue-entry-text'
@@ -184,13 +205,21 @@ export function createQueue(db, openTierEditor) {
           badge.prepend(pokemonSprite(entry.pokemon_id))
           if (source.key === 'self') badge.firstChild.alt = 'Ditto'
           text.append(badge)
+          const names = (entry.reading_tags ?? []).map((id) => readingTags.get(id)).filter(Boolean)
+          if (names.length) {
+            const tags = document.createElement('ul')
+            tags.className = 'queue-tag-list'
+            tags.setAttribute('aria-label', 'Reading tags')
+            tags.append(...names.map((name) => cell('li', name)))
+            text.append(tags)
+          }
         }
-        if (owner) card.append(renderRowActions(entry, entriesInBucket, index, card))
+        if (owner) card.append(renderRowActions(entry, visibleEntries, index, card))
         else if (promoted.has(entry.id) && !compact) text.append(cell('span', 'In MyShelf'))
         list.append(card)
       })
       bucket.append(list)
-    } else bucket.append(cell('p', 'Empty'))
+    } else bucket.append(cell('p', tag ? 'No books match this tag.' : 'Empty'))
 
     if (owner) {
       const add = cell('button', '+ ' + source.add)
@@ -300,12 +329,20 @@ export function createQueue(db, openTierEditor) {
 
   function renderSetup() {
     byId('queue-priority-setup').hidden = !owner || !loaded || (columns.includes(priorityColumn) && canPromote)
+    byId('queue-reading-setup').hidden = !owner || !loaded || columns.includes(readingColumns)
+    byId('queue-reading-filter-field').hidden = !viewer && (!owner || !loaded || !columns.includes(readingColumns))
   }
 
-  async function load() {
-    if (!owner || loading || loaded) return
+  function load() {
+    if (!owner || loaded) return
     const session = version
-    loading = true
+    loadRequest ??= loadRecords(session).finally(() => {
+      if (session === version) loadRequest = null
+    })
+    return loadRequest
+  }
+
+  async function loadRecords(session) {
     status.textContent = 'Loading QuestLog…'
     setup.hidden = true
     retry.hidden = true
@@ -318,7 +355,10 @@ export function createQueue(db, openTierEditor) {
         let result = await fetchPage(offset)
         if (session !== version) return
         if (offset === 0) {
-          for (const fallback of [artworkColumns, basicColumns + priorityColumn, basicColumns]) {
+          for (const fallback of [
+            standardColumns, artworkColumns + readingColumns, basicColumns + priorityColumn + readingColumns,
+            basicColumns + readingColumns, artworkColumns, basicColumns + priorityColumn, basicColumns,
+          ]) {
             if (!['42703', 'PGRST204'].includes(result.error?.code)) break
             columns = fallback
             result = await fetchPage(offset)
@@ -343,8 +383,6 @@ export function createQueue(db, openTierEditor) {
       setup.querySelector('p').hidden = !missing
       retry.textContent = missing ? 'Check again' : 'Try again'
       retry.hidden = false
-    } finally {
-      if (session === version) loading = false
     }
   }
 
@@ -368,6 +406,9 @@ export function createQueue(db, openTierEditor) {
     const book = entry.media_type === 'book'
     byId('queue-author-field').hidden = !book
     author.disabled = !book
+    readingTagField.hidden = !book || !columns.includes(readingColumns)
+    readingTagField.disabled = readingTagField.hidden
+    for (const [id, input] of readingInputs) input.checked = entry.reading_tags?.includes(id) ?? false
     lookup.textContent = book ? 'Find cover' : 'Find poster'
     byId('queue-artwork-field').firstChild.textContent = book ? 'Cover image URL' : 'Poster image URL'
     const self = entry.source === 'self'
@@ -382,6 +423,7 @@ export function createQueue(db, openTierEditor) {
     updateAlias()
     dialog.showModal()
     title.focus()
+    return true
   }
 
   function renderArtwork() {
@@ -501,8 +543,10 @@ export function createQueue(db, openTierEditor) {
       status.textContent = removeEntry ? 'Removed from QuestLog.'
         : !columns.includes(',artwork_url') && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
         : 'Saved to QuestLog.'
-    } catch {
-      if (session === version) formStatus.textContent = 'Could not save that change. Try again.'
+    } catch (error) {
+      if (session === version) formStatus.textContent = entry.source_recommendation_id && !entry.id && error.code === '23505'
+        ? 'This recommendation is already in SideQuest.'
+        : 'Could not save that change. Try again.'
     } finally {
       if (session === version) {
         pending = false
@@ -536,6 +580,12 @@ export function createQueue(db, openTierEditor) {
     }
     persist(false, {
       ...(columns.includes(',artwork_url') ? { artwork_url: image || null } : {}),
+      ...(readingTagField.disabled ? {} : {
+        reading_tags: [...readingInputs].filter(([, input]) => input.checked).map(([id]) => id),
+      }),
+      ...(activeEntry.id || !activeEntry.source_recommendation_id ? {} : {
+        source_recommendation_id: activeEntry.source_recommendation_id,
+      }),
       title: name, author: activeEntry.media_type === 'book' ? author.value.trim() || null : null,
       media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: aliasId,
     })
@@ -551,7 +601,7 @@ export function createQueue(db, openTierEditor) {
     load()
   })
   retry.addEventListener('click', load)
-  for (const input of sourceFilters.values()) input.addEventListener('change', () => {
+  for (const input of [...sourceFilters.values(), readingFilter]) input.addEventListener('change', () => {
     if (loaded) render()
   })
   compactButton.addEventListener('click', () => {
@@ -562,6 +612,23 @@ export function createQueue(db, openTierEditor) {
   })
 
   return {
+    async openRecommendation(recommendation) {
+      const session = version
+      await load()
+      if (session !== version || !owner || !loaded || !columns.includes(readingColumns)) return false
+      const opened = openEditor({
+        title: recommendation.title, author: recommendation.author, media_type: 'book', source: 'recommended',
+        source_recommendation_id: recommendation.id,
+      }, byId('recommendation-mailbox'))
+      if (opened) {
+        readingFilter.value = ''
+        sourceFilters.get('recommended').checked = true
+        expanded.add('book')
+        switchView(true, true)
+        render()
+      }
+      return opened
+    },
     setPromotionState(enabled, ids) {
       const updated = canPromote !== enabled || promoted.size !== ids.size || [...ids].some((id) => !promoted.has(id))
       canPromote = enabled
@@ -581,12 +648,12 @@ export function createQueue(db, openTierEditor) {
       viewer = isViewer
       version++
       entries = viewerEntries ?? []
-      loading = false
+      loadRequest = null
       loaded = viewer
       pending = false
       activeEntry = null
       trigger = null
-      columns = artworkColumns + priorityColumn
+      columns = standardColumns + readingColumns
       dragging = null
       byId('queue-priority-setup').hidden = true
       resetArtworkLookup()
@@ -602,6 +669,8 @@ export function createQueue(db, openTierEditor) {
       setup.hidden = true
       nav.hidden = !owner && !viewer
       for (const input of sourceFilters.values()) input.checked = true
+      readingFilter.value = ''
+      renderSetup()
       const reopenQueue = (owner || viewer) && queueHashes.has(location.hash)
       switchView(reopenQueue, reopenQueue || (!owner && !viewer))
       if (viewer) render()

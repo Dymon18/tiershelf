@@ -15,6 +15,7 @@
       <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
       <div class="account">
         <span id="mode" class="mode">Demo mode</span>
+        <button id="recommendation-mailbox" class="button" type="button" hidden>Recommendation mailbox</button>
         <button id="viewer-button" class="button" type="button">Viewer mode</button>
         <button id="account-button" class="button" type="button">Dymon login</button>
       </div>
@@ -74,6 +75,9 @@
               <label><input id="queue-filter-recommended" type="checkbox" checked> <span aria-hidden="true">🧭</span> SideQuest</label>
               <label><input id="queue-filter-self" type="checkbox" checked> <span aria-hidden="true">🪵</span> BackLog</label>
             </fieldset>
+            <label id="queue-reading-filter-field" hidden>Book reading tag
+              <select id="queue-reading-filter"><option value="">Any tag</option></select>
+            </label>
           </details>
         </div>
       </header>
@@ -87,6 +91,9 @@
       </p>
       <p id="queue-priority-setup" class="queue-setup" hidden>
         Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/008_queue_priority_and_promotion.sql" target="_blank" rel="noopener">SB queue priority migration</a> to save ranks and promote entries.
+      </p>
+      <p id="queue-reading-setup" class="queue-setup" hidden>
+        Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/011_reading_tags_and_mailbox.sql" target="_blank" rel="noopener">SB reading tags and mailbox migration</a> and refresh.
       </p>
       <div id="queue-columns" class="queue-columns"></div>
     </section>
@@ -164,6 +171,9 @@
       <img id="queue-artwork-preview" class="queue-artwork-preview" alt="Artwork preview" referrerpolicy="no-referrer" hidden>
       <p id="queue-lookup-status" role="status"></p>
       <label id="queue-author-field" class="queue-field">Author<input id="queue-author" maxlength="200" autocomplete="off"></label>
+      <fieldset id="queue-reading-tags" class="queue-reading-tags" hidden>
+        <legend>Reading tags</legend>
+      </fieldset>
       <label id="queue-alias-field" class="queue-field">Recommended by
         <input id="queue-alias" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Pokémon name">
       </label>
@@ -230,6 +240,25 @@
     </div>
     <img id="viewer-title-art" class="viewer-title-art" alt="" referrerpolicy="no-referrer" hidden>
     <dl id="viewer-title-details"></dl>
+  </dialog>
+  <dialog id="recommendation-dialog" aria-labelledby="recommendation-heading">
+    <div class="dialog-heading">
+      <h2 id="recommendation-heading">Recommend a book</h2>
+      <button id="close-recommendation" class="icon-button" type="button" aria-label="Close recommendation mailbox">×</button>
+    </div>
+    <form id="recommendation-form">
+      <p>Only Dymon can read your message. If your book goes into SideQuest, Dymon will credit you with a Pokémon alias.</p>
+      <label>Book title<input id="recommendation-title" maxlength="200" required></label>
+      <label>Author (optional)<input id="recommendation-author" maxlength="200"></label>
+      <label>Your name, alias or nickname<input id="recommendation-sender" maxlength="100" required></label>
+      <label>Why do you recommend it? (optional)<textarea id="recommendation-note" rows="3" maxlength="1000"></textarea></label>
+      <div class="form-actions">
+        <button id="send-recommendation" class="button primary" type="submit">Send recommendation</button>
+      </div>
+    </form>
+    <p id="recommendation-status" role="status"></p>
+    <p id="recommendation-setup" hidden>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/011_reading_tags_and_mailbox.sql" target="_blank" rel="noopener">SB reading tags and mailbox migration</a> and reopen the mailbox.</p>
+    <ul id="recommendation-list" hidden></ul>
   </dialog>
   <script type="module" src="/src/main.js"></script>
 </body>

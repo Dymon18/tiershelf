@@ -1,13 +1,17 @@
 import pokemon from './pokemon.json'
+import forms from './pokemon-forms.json'
 
 export const ditto = 132
 const pokemonKey = (name) => name.normalize('NFD').replace(/\p{M}/gu, '')
   .toLowerCase().replaceAll('♀', 'f').replaceAll('♂', 'm').replace(/[^a-z0-9]+/g, '')
-const species = new Map(Object.entries(pokemon).map(([id, name]) => [pokemonKey(name), Number(id)]))
+const names = { ...pokemon, ...forms }
+const species = new Map(Object.entries(names).map(([id, name]) => [pokemonKey(name), Number(id)]))
 species.set('greninjaash', 10117)
+species.set('calyrexicerider', 10193)
+species.set('calyrexshadowrider', 10194)
 
 export function pokemonName(id) {
-  return pokemon[id] ?? ''
+  return names[id] ?? ''
 }
 
 export function pokemonId(name) {
@@ -15,7 +19,7 @@ export function pokemonId(name) {
 }
 
 export function populatePokemonOptions(datalist) {
-  for (const name of Object.values(pokemon).sort((a, b) => a.localeCompare(b))) {
+  for (const name of Object.values(names).sort((a, b) => a.localeCompare(b))) {
     datalist.append(new Option(name, name))
   }
 }

@@ -98,7 +98,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
           ? 'Viewer access is still being set up.'
           : 'Could not check the key. Try again.'
       } else if (!Array.isArray(data?.shelf) || !Array.isArray(data?.questlog)) state.textContent = 'This key did not unlock TierShelf. Check with Dymon.'
-      else openSnapshot(data)
+      else openSnapshot(data, submitted)
     } catch {
       if (version === accessVersion) state.textContent = 'Could not check the key. Try again.'
     } finally {

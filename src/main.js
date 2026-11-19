@@ -3,6 +3,7 @@ import './style.css'
 import { config } from './config.js'
 import { createQueue } from './queue.js'
 import { createViewer } from './viewer.js'
+import { createMailbox } from './mailbox.js'
 import { pokemonId, pokemonName, pokemonSprite } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
@@ -126,9 +127,10 @@ let ownerMode = false
 let viewerMode = false
 const viewer = createViewer(db, {
   mode: () => ownerMode ? 'dymon' : viewerMode ? 'viewer' : 'demo',
-  openSnapshot: ({ shelf, questlog }) => setMode(false, shelf, questlog),
+  openSnapshot: ({ shelf, questlog }, key) => setMode(false, shelf, questlog, key),
   exit: () => setMode(false, demo),
 })
+const mailbox = createMailbox(db, queue.openRecommendation)
 let editing = null
 let editorReturn = null
 let dragging = null
@@ -961,13 +963,14 @@ byId('clear-categories').addEventListener('click', () => {
   render()
 })
 
-function setMode(isOwner, records, viewerQueue = null) {
+function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   frameVersion++
   ownerMode = isOwner
   viewerMode = viewerQueue !== null
   const mode = isOwner ? 'dymon' : viewerMode ? 'viewer' : 'demo'
   document.body.dataset.mode = mode
   viewer.setMode(mode)
+  mailbox.setMode(mode, viewerKey)
   queue.setOwner(isOwner, viewerQueue)
   entries = records
   dragging = null
