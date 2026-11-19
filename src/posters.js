@@ -55,3 +55,28 @@ export async function findPoster({ title, type, year, page }) {
     page: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(match.title.replaceAll(' ', '_')),
   }
 }
+
+export async function findBookCover({ title, author }) {
+  if (!title) throw new Error('Enter the book title.')
+  const endpoint = new URL('https://openlibrary.org/search.json')
+  endpoint.search = new URLSearchParams({ title, fields: 'title,author_name,cover_i', limit: '10' })
+  if (author) endpoint.searchParams.set('author', author)
+
+  let response
+  try {
+    response = await fetch(endpoint, { signal: AbortSignal.timeout(10000) })
+  } catch {
+    throw new Error('Open Library could not be reached. Try again or paste a direct cover image URL.')
+  }
+  if (!response.ok) throw new Error('Open Library could not be reached. Try again or paste a direct cover image URL.')
+
+  const normalize = (value) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
+  const { docs = [] } = await response.json()
+  const result = docs.find((book) => book.cover_i && normalize(book.title) === normalize(title)
+    && (!author || book.author_name?.some((name) => normalize(name) === normalize(author))))
+  if (!result) throw new Error('No matching cover in Open Library. Try a Wikipedia article or a direct cover image URL.')
+  return {
+    image: `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false`,
+    author: result.author_name?.join(', '),
+  }
+}

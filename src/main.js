@@ -1,34 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
-import { findPoster, httpsUrl, wikipediaTitle } from './posters.js'
+import { findBookCover, findPoster, httpsUrl, wikipediaTitle } from './posters.js'
 
 const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
   D: '#a6dbbc', E: '#a6cde8', F: '#c4b9ed',
 }
 const types = { movie: 'Movie', book: 'Book', anime: 'Series' }
-const samples = [
-  ['Spirited Away', 'movie', 'S'], ['Piranesi', 'book', 'S'], ['Parasite', 'movie', 'S'],
-  ['Arrival', 'movie', 'A'], ['The Hobbit', 'book', 'A'], ['Frieren: Beyond Journey’s End', 'anime', 'A'],
-  ['Interstellar', 'movie', 'B'], ['Spy × Family', 'anime', 'B'],
-  ['The Martian', 'book', 'C'], ['Tron: Legacy', 'movie', 'D'],
-]
 const starterCategories = {
   movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Animation', 'Musical', 'Action'],
   book: ['Fantasy', 'Sci-fi', 'Mystery', 'Romance', 'Nonfiction'],
   anime: ['Animation', 'Anime', 'K-drama', 'TV Show'],
 }
-const sampleCategories = {
-  'Spirited Away': ['Studio Ghibli', 'Animation'],
-  'Piranesi': ['Fantasy'],
-  'The Hobbit': ['Fantasy'],
-  'The Martian': ['Sci-fi'],
-  'Frieren: Beyond Journey’s End': ['Animation', 'Anime'],
-  'Spy × Family': ['Animation', 'Anime'],
-}
 const basicColumns = 'id,title,media_type,grade'
-const fullColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
+const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
+const fullColumns = detailColumns + ',author'
 const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
@@ -41,6 +28,7 @@ const search = byId('search')
 const accountButton = byId('account-button')
 const githubButton = byId('github-login')
 const titleInput = byId('entry-title')
+const authorInput = byId('entry-author')
 const gradeInput = byId('entry-grade')
 const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
@@ -56,19 +44,25 @@ const editorStatus = byId('editor-status')
 const saveButton = byId('save-button')
 const deleteButton = byId('delete-button')
 const filters = document.querySelectorAll('[data-filter]')
-const demo = samples.map(([title, media_type, grade], index) => ({
-  id: `demo-${index}`, title, media_type, grade, categories: sampleCategories[title] ?? [],
-}))
-demo.push({
-  id: 'demo-pacific-rim', title: 'Pacific Rim', media_type: 'movie', grade: 'S',
-  categories: ['Action', 'Sci-fi'], release_year: 2013,
-  wikipedia_url: 'https://en.wikipedia.org/wiki/Pacific_Rim_(film)',
-  poster_url: 'https://upload.wikimedia.org/wikipedia/en/f/f3/Pacific_Rim_FilmPoster.jpeg',
-})
+const demo = [
+  {
+    id: 'demo-pacific-rim', title: 'Pacific Rim', media_type: 'movie', grade: 'S',
+    categories: ['Action', 'Sci-fi'], release_year: 2013,
+    wikipedia_url: 'https://en.wikipedia.org/wiki/Pacific_Rim_(film)',
+    poster_url: 'https://upload.wikimedia.org/wikipedia/en/f/f3/Pacific_Rim_FilmPoster.jpeg',
+  },
+  {
+    id: 'demo-avatar', title: 'Avatar: The Last Airbender', media_type: 'anime', grade: 'S',
+    categories: ['Animation', 'TV Show'], release_year: 2005,
+    wikipedia_url: 'https://en.wikipedia.org/wiki/Avatar:_The_Last_Airbender',
+    poster_url: 'https://static.tvmaze.com/uploads/images/medium_portrait/79/199224.jpg',
+  },
+]
 let entries = demo
 let filter = 'movie'
 let category = ''
 let archiveDetails = true
+let archiveColumns = fullColumns
 let selectedCategories = new Set()
 let lookupVersion = 0
 let ownerMode = false
@@ -111,7 +105,7 @@ function render() {
   const shelf = entries.filter((entry) => entry.media_type === filter)
   const visible = shelf.filter((entry) =>
     (!category || entry.categories?.some((name) => name.toLowerCase() === category)) &&
-    entry.title.toLowerCase().includes(query),
+    (entry.title.toLowerCase().includes(query) || entry.author?.toLowerCase().includes(query)),
   )
   byId('count').textContent = visible.length === shelf.length
     ? `${shelf.length} ${shelf.length === 1 ? 'title' : 'titles'}`
@@ -178,9 +172,10 @@ function createCard(entry) {
   const name = document.createElement('strong')
   name.textContent = entry.title
   const type = document.createElement('span')
-  type.textContent = types[entry.media_type]
+  type.textContent = entry.author || types[entry.media_type]
   card.append(name, type)
-  card.title = entry.release_year ? `${entry.title} (${entry.release_year})` : entry.title
+  const titleWithYear = entry.release_year ? `${entry.title} (${entry.release_year})` : entry.title
+  card.title = entry.author ? `${titleWithYear} by ${entry.author}` : titleWithYear
   const poster = httpsUrl(entry.poster_url)
   if (poster) {
     const image = document.createElement('img')
@@ -213,6 +208,7 @@ function openEditor(entry) {
   editing = entry ?? null
   byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
+  authorInput.value = entry?.author ?? ''
   typeInput.value = entry?.media_type ?? filter
   byId('entry-details').hidden = ownerMode && !archiveDetails
   selectedCategories = new Set(entry?.categories ?? [])
@@ -223,6 +219,7 @@ function openEditor(entry) {
   lookupVersion++
   posterButton.disabled = false
   posterStatus.textContent = ''
+  renderTypeFields()
   renderCategoryPicker()
   previewPoster()
   gradeInput.value = entry?.grade ?? 'A'
@@ -230,6 +227,13 @@ function openEditor(entry) {
   editorStatus.textContent = ''
   editor.showModal()
   titleInput.focus()
+}
+
+function renderTypeFields() {
+  const isBook = typeInput.value === 'book'
+  byId('entry-author-field').hidden = !isBook || (ownerMode && archiveColumns !== fullColumns)
+  posterButton.textContent = isBook ? 'Find cover' : 'Find poster'
+  byId('entry-poster').parentElement.firstChild.textContent = isBook ? 'Cover image URL ' : 'Poster image URL '
 }
 
 function renderCategoryPicker() {
@@ -291,7 +295,7 @@ async function save(record) {
       const request = id
         ? db.from('tiershelf_entries').update(fields).eq('id', id)
         : db.from('tiershelf_entries').insert(fields)
-      const { data, error } = await request.select(archiveDetails ? fullColumns : basicColumns).single()
+      const { data, error } = await request.select(archiveColumns).single()
       if (error) throw new Error('Could not save this title. Try again.')
       result = data
     } finally {
@@ -354,6 +358,10 @@ async function submitEditor(action, focusId) {
 typeInput.addEventListener('change', () => {
   selectedCategories = new Set(typeInput.value === editing?.media_type ? editing.categories ?? [] : [])
   newCategory.value = ''
+  lookupVersion++
+  posterButton.disabled = false
+  posterStatus.textContent = ''
+  renderTypeFields()
   renderCategoryPicker()
 })
 byId('add-category').addEventListener('click', addCategory)
@@ -377,15 +385,21 @@ posterInput.addEventListener('input', () => {
 posterButton.addEventListener('click', async () => {
   const version = ++lookupVersion
   posterButton.disabled = true
-  posterStatus.textContent = 'Looking for a poster…'
+  const page = wikiInput.value.trim()
+  const isBook = typeInput.value === 'book'
+  posterStatus.textContent = isBook ? 'Looking for a cover…' : 'Looking for a poster…'
   try {
-    const poster = await findPoster({
-      title: titleInput.value.trim(), type: typeInput.value, year: yearInput.value, page: wikiInput.value.trim(),
-    })
+    const title = titleInput.value.trim()
+    const poster = isBook && !page
+      ? await findBookCover({ title, author: authorInput.value.trim() })
+      : await findPoster({ title, type: typeInput.value, year: yearInput.value, page })
     if (version !== lookupVersion || !editor.open) return
-    wikiInput.value = poster.page
+    if (poster.page) wikiInput.value = poster.page
+    if (poster.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
+      authorInput.value = poster.author.slice(0, 200)
+    }
     posterInput.value = poster.image
-    posterStatus.textContent = 'Poster found. Save the title to use it.'
+    posterStatus.textContent = isBook ? 'Cover found. Save the title to use it.' : 'Poster found. Save the title to use it.'
     previewPoster()
   } catch (error) {
     if (version === lookupVersion && editor.open) posterStatus.textContent = error.message
@@ -431,6 +445,9 @@ byId('entry-form').addEventListener('submit', (event) => {
       categories: [...selectedCategories], release_year: yearInput.value ? Number(yearInput.value) : null,
       wikipedia_url: page || null, poster_url: image || null,
     })
+  }
+  if (!ownerMode || archiveColumns === fullColumns) {
+    record.author = typeInput.value === 'book' ? authorInput.value.trim() || null : null
   }
   submitEditor(() => save(record), editing?.id)
 })
@@ -516,9 +533,17 @@ if (db) {
       }
       const loadEntries = (columns) => db.from('tiershelf_entries')
         .select(columns).order('created_at').order('id')
-      let result = await loadEntries(fullColumns)
-      const hasDetails = !['42703', 'PGRST204'].includes(result.error?.code)
-      if (!hasDetails) result = await loadEntries(basicColumns)
+      let columns = fullColumns
+      let result = await loadEntries(columns)
+      const missingColumn = () => ['42703', 'PGRST204'].includes(result.error?.code)
+      if (missingColumn()) {
+        columns = detailColumns
+        result = await loadEntries(columns)
+      }
+      if (missingColumn()) {
+        columns = basicColumns
+        result = await loadEntries(columns)
+      }
       const { data, error } = result
       if (version !== authVersion) return
       accountButton.disabled = false
@@ -527,9 +552,12 @@ if (db) {
         status('Could not load your archive. Try signing in again.')
         return
       }
-      archiveDetails = hasDetails
+      archiveColumns = columns
+      archiveDetails = columns !== basicColumns
       setMode(true, data)
-      status(hasDetails ? '' : 'Run the Supabase entry details migration to save categories and posters.')
+      if (!archiveDetails) status('Run the Supabase entry details migration to save categories and posters.')
+      else if (columns !== fullColumns) status('Run the Supabase book author migration to save authors.')
+      else status('')
     }, 0)
   })
 }
