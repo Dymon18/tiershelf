@@ -67,6 +67,7 @@ export function createQueue(db) {
   let trigger = null
 
   function switchView(showQueue) {
+    document.body.dataset.view = showQueue ? 'queue' : 'archive'
     view.hidden = !showQueue
     archive.hidden = showQueue
     archiveButton.setAttribute('aria-pressed', String(!showQueue))

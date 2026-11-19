@@ -258,13 +258,21 @@ body { isolation: isolate; }
   z-index: -1;
   inset: 0;
   pointer-events: none;
-  background: url('/demo-pattern.png') repeat;
+  background: url('/demo-pattern.png') 0 0 / 54px 54px repeat;
   opacity: .15;
 }
 
+body[data-mode="demo"] .mode-pattern { filter: brightness(1.65); }
+
 body[data-mode="dymon"] .mode-pattern {
   background-image: url('/dymon-pattern.png');
+  background-size: auto;
   opacity: .13;
+}
+
+body[data-mode="dymon"][data-view="queue"] .mode-pattern {
+  background-image: url('/queue-pattern.png');
+  opacity: .15;
 }
 
 .section-nav {
