@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
 import { createQueue } from './queue.js'
+import { pokemonId, pokemonName, pokemonSprite } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
@@ -19,6 +20,7 @@ const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,pos
 const fullColumns = detailColumns + ',author'
 const rankedColumns = fullColumns + ',tier_position'
 const movieColumn = ',movie_details'
+const promotionColumns = ',recommender_pokemon_id,source_queue_id'
 const movieFields = {
   directors: 'Director', studios: 'Studio', franchises: 'Franchise',
   languages: 'Original language', countries: 'Country of origin', runtime: 'Runtime (minutes)',
@@ -30,7 +32,11 @@ const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
 
-const queue = createQueue(db)
+const queue = createQueue(db, (entry) => openEditor({
+  title: entry.title, media_type: entry.media_type, author: entry.author,
+  poster_url: entry.artwork_url, source_queue_id: entry.id,
+  recommender_pokemon_id: entry.source === 'recommended' ? entry.pokemon_id : null,
+}))
 
 const byId = (id) => document.getElementById(id)
 const board = byId('board')
@@ -41,6 +47,7 @@ const accountButton = byId('account-button')
 const githubButton = byId('github-login')
 const titleInput = byId('entry-title')
 const authorInput = byId('entry-author')
+const recommenderInput = byId('entry-recommender')
 const gradeInput = byId('entry-grade')
 const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
@@ -217,6 +224,8 @@ function tierOrder(a, b) {
 }
 
 function render() {
+  queue.setPromotionState(ownerMode && archiveColumns.includes(promotionColumns),
+    new Set(entries.map((entry) => entry.source_queue_id).filter(Boolean)))
   renderCategoryFilter()
   const query = normalizeTitle(search.value)
   const shelf = entries.filter((entry) => entry.media_type === filter)
@@ -402,6 +411,15 @@ function createCard(entry) {
     card.prepend(image)
     image.src = poster.href
   }
+  const recommender = pokemonName(entry.recommender_pokemon_id)
+  if (recommender) {
+    const icon = pokemonSprite(entry.recommender_pokemon_id)
+    icon.className = 'entry-recommender-sprite'
+    card.append(icon)
+    card.classList.add('has-recommender')
+    card.title += ` · Recommended by ${recommender}`
+    card.setAttribute('aria-label', `${entry.title}, recommended by ${recommender}`)
+  }
   card.addEventListener('click', () => openEditor(entry))
   card.addEventListener('dragstart', (event) => {
     dragging = entry
@@ -425,11 +443,18 @@ function createCard(entry) {
 }
 
 function openEditor(entry, defaultGrade = 'A') {
-  editorReturn = { x: window.scrollX, y: window.scrollY, grade: entry?.grade ?? defaultGrade }
+  const promoting = Boolean(entry?.source_queue_id && !entry?.id)
+  editorReturn = { x: window.scrollX, y: window.scrollY, grade: entry?.grade ?? defaultGrade,
+    queueId: promoting ? entry.source_queue_id : null }
   editing = entry ?? null
-  byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
+  byId('editor-title').textContent = promoting ? 'Promote to tier list' : entry?.id ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
   authorInput.value = entry?.author ?? ''
+  const recommendField = byId('entry-recommender-field')
+  recommendField.hidden = ownerMode && !archiveColumns.includes(promotionColumns)
+  recommenderInput.disabled = recommendField.hidden
+  recommenderInput.value = recommendField.hidden ? '' : pokemonName(entry?.recommender_pokemon_id)
+  renderRecommender()
   for (const [key, input] of Object.entries(movieInputs)) {
     const value = entry?.movie_details?.[key]
     input.value = key === 'runtime' ? value ?? '' : (Array.isArray(value) ? value.join(', ') : '')
@@ -449,11 +474,19 @@ function openEditor(entry, defaultGrade = 'A') {
   renderCategoryPicker()
   previewPoster()
   gradeInput.value = entry?.grade ?? defaultGrade
-  deleteButton.hidden = !entry
+  deleteButton.hidden = !entry?.id
   editorStatus.textContent = ''
   editor.showModal()
   titleInput.focus()
 }
+
+function renderRecommender() {
+  const preview = byId('entry-recommender-preview')
+  preview.replaceChildren()
+  const id = pokemonId(recommenderInput.value)
+  if (id && !recommenderInput.disabled) preview.append(pokemonSprite(id), pokemonName(id))
+}
+recommenderInput.addEventListener('input', renderRecommender)
 
 function renderTypeFields() {
   const isBook = typeInput.value === 'book'
@@ -535,7 +568,8 @@ async function save(record) {
   if (pendingChanges) throw new Error('Please wait for the current change to finish.')
   const version = frameVersion
   const target = entries
-  const { id, ...fields } = record
+  const { id, source_queue_id, ...fields } = record
+  if (!id && source_queue_id) fields.source_queue_id = source_queue_id
   let result = record
   if (ownerMode) {
     pendingChanges++
@@ -545,6 +579,7 @@ async function save(record) {
         ? db.from('tiershelf_entries').update(fields).eq('id', id)
         : db.from('tiershelf_entries').insert(fields)
       const { data, error } = await request.select(archiveColumns).single()
+      if (error?.code === '23505' && source_queue_id) throw new Error('This queue entry is already in the tier list. Refresh to see it.')
       if (error) throw new Error('Could not save this title. Try again.')
       result = data
     } finally {
@@ -596,7 +631,8 @@ async function submitEditor(action, focusId) {
     const editedCard = focusId && board.querySelector(`[data-entry="${CSS.escape(focusId)}"]`)
     const tierAdd = byId('tier-' + returnTo.grade)?.parentElement.querySelector('.add-tier')
     const focusTarget = editedCard || tierAdd || byId('add-button')
-    focusTarget.focus({ preventScroll: true })
+    if (returnTo.queueId) queue.finishPromotion(returnTo.queueId)
+    else focusTarget.focus({ preventScroll: true })
     if (window.scrollX !== returnTo.x || window.scrollY !== returnTo.y) {
       window.scrollTo({ left: returnTo.x, top: returnTo.y, behavior: 'instant' })
     }
@@ -845,6 +881,17 @@ byId('entry-form').addEventListener('submit', (event) => {
     return
   }
   const record = { id: editing?.id, title, media_type: typeInput.value, grade: gradeInput.value }
+  if (!recommenderInput.disabled) {
+    const alias = recommenderInput.value.trim()
+    const id = pokemonId(alias)
+    if (alias && !id) {
+      editorStatus.textContent = 'Choose a Pokémon alias for Recommended by.'
+      recommenderInput.focus()
+      return
+    }
+    record.recommender_pokemon_id = id ?? null
+  }
+  if (!editing?.id && editing?.source_queue_id) record.source_queue_id = editing.source_queue_id
   if (!ownerMode || archiveDetails) {
     if (newCategory.value.trim()) addCategory()
     const page = wikiInput.value.trim()
@@ -971,9 +1018,13 @@ if (db) {
       }
       const loadEntries = (columns) => db.from('tiershelf_entries')
         .select(columns).order('created_at').order('id')
-      let columns = rankedColumns + movieColumn
+      let columns = rankedColumns + movieColumn + promotionColumns
       let result = await loadEntries(columns)
       const missingColumn = () => ['42703', 'PGRST204'].includes(result.error?.code)
+      if (missingColumn()) {
+        columns = rankedColumns + movieColumn
+        result = await loadEntries(columns)
+      }
       if (missingColumn()) {
         columns = rankedColumns
         result = await loadEntries(columns)
@@ -994,6 +1045,14 @@ if (db) {
         columns = basicColumns
         result = await loadEntries(columns)
       }
+      if (!result.error && !columns.includes(promotionColumns)) {
+        const extras = await loadEntries('id' + promotionColumns)
+        if (!extras.error) {
+          const byEntry = new Map(extras.data.map((entry) => [entry.id, entry]))
+          result.data = result.data.map((entry) => ({ ...entry, ...byEntry.get(entry.id) }))
+          columns += promotionColumns
+        }
+      }
       const { data, error } = result
       if (version !== authVersion) return
       accountButton.disabled = false
@@ -1004,7 +1063,7 @@ if (db) {
       }
       archiveColumns = columns
       canRank = columns.includes(',tier_position')
-      archiveDetails = columns !== basicColumns
+      archiveDetails = columns.includes(',categories')
       setMode(true, data)
       if (!archiveDetails) status('Run the Supabase entry details migration to save categories and posters.')
       else if (!columns.includes(',author')) status('Run the Supabase book author migration to save authors.')

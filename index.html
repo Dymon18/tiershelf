@@ -61,6 +61,7 @@
       <header class="queue-heading">
         <h1 id="queue-heading" tabindex="-1">PokéQueue<span>.</span></h1>
         <p>What to watch or read next.</p>
+        <button id="queue-compact" type="button" class="button" aria-pressed="false" aria-controls="queue-columns">Compact books view</button>
       </header>
       <p id="queue-status" role="status"></p>
       <div id="queue-setup" class="queue-setup" hidden>
@@ -69,6 +70,9 @@
       </div>
       <p id="queue-artwork-setup" class="queue-setup" hidden>
         Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/007_queue_artwork.sql" target="_blank" rel="noopener">SB queue artwork migration</a> to save covers and posters.
+      </p>
+      <p id="queue-priority-setup" class="queue-setup" hidden>
+        Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/008_queue_priority_and_promotion.sql" target="_blank" rel="noopener">SB queue priority migration</a> to save ranks and promote entries.
       </p>
       <div id="queue-columns" class="queue-columns"></div>
     </section>
@@ -122,6 +126,8 @@
           </div>
         </fieldset>
       </fieldset>
+      <label id="entry-recommender-field" class="queue-field">Recommended by <input id="entry-recommender" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Optional Pokémon alias"></label>
+      <div id="entry-recommender-preview" class="queue-alias-preview"></div>
       <p id="editor-status" role="status"></p>
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
     </form>

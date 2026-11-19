@@ -1,4 +1,4 @@
-import pokemon from './pokemon.json'
+import { ditto, pokemonId, pokemonName, pokemonSprite, populatePokemonOptions } from './pokemon.js'
 import { findArtworkOptions, findBookOptions, httpsUrl } from './posters.js'
 
 const mediaTypes = [
@@ -10,36 +10,19 @@ const sources = [
   { key: 'recommended', label: 'Recommended', add: 'Add recommendation' },
   { key: 'self', label: 'Self-added', add: 'Add for myself' },
 ]
-const ditto = 132
 const tableName = 'tiershelf_queue'
 const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
 const artworkColumns = basicColumns + ',artwork_url'
+const priorityColumn = ',queue_position'
 const queueHash = '#pokequeue'
 const byId = (id) => document.getElementById(id)
-const pokemonKey = (name) => name.normalize('NFD').replace(/\p{M}/gu, '')
-  .toLowerCase().replaceAll('♀', 'f').replaceAll('♂', 'm').replace(/[^a-z0-9]+/g, '')
-const species = new Map(Object.entries(pokemon).map(([id, name]) => [pokemonKey(name), Number(id)]))
-species.set('greninjaash', 10117)
-
 function cell(tag, value) {
   const node = document.createElement(tag)
   node.textContent = value
   return node
 }
 
-function sprite(id) {
-  const image = document.createElement('img')
-  image.alt = ''
-  image.width = 36
-  image.height = 36
-  image.loading = 'lazy'
-  image.referrerPolicy = 'no-referrer'
-  image.src = `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`
-  image.addEventListener('error', () => { image.hidden = true }, { once: true })
-  return image
-}
-
-export function createQueue(db) {
+export function createQueue(db, openTierEditor) {
   const nav = byId('archive-nav')
   const archive = byId('archive-view')
   const view = byId('queue-view')
@@ -65,11 +48,16 @@ export function createQueue(db) {
   const close = byId('close-queue-editor')
   const archiveButton = byId('show-archive')
   const queueButton = byId('show-queue')
+  const compactButton = byId('queue-compact')
+  let compact = false
+  let promoted = new Set()
+  let canPromote = false
+  let dragging = null
   const expanded = new Set(mediaTypes.map(({ key }) => key))
   let lookupVersion = 0
   let matches = []
   let autofilledAuthor = ''
-  let columns = artworkColumns
+  let columns = artworkColumns + priorityColumn
   let owner = false
   let version = 0
   let entries = []
@@ -95,7 +83,9 @@ export function createQueue(db) {
 
   function render() {
     board.replaceChildren()
-    for (const { key, label } of mediaTypes) {
+    board.dataset.compact = String(compact)
+    const visibleTypes = compact ? mediaTypes.filter(({ key }) => key === 'book') : mediaTypes
+    for (const { key, label } of visibleTypes) {
       const column = document.createElement('section')
       column.className = 'queue-column'
       column.dataset.queueType = key
@@ -142,22 +132,29 @@ export function createQueue(db) {
     bucket.setAttribute('aria-labelledby', heading.id)
     bucket.append(heading)
     const rows = group.filter((entry) => entry.source === source.key)
+      .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
     if (rows.length) {
       const table = document.createElement('table')
       table.setAttribute('aria-labelledby', heading.id)
       const head = table.createTHead().insertRow()
-      for (const label of type === 'book' ? ['Title', 'Author', 'From'] : ['Title', 'From']) {
+      const labels = compact ? ['#', 'Title'] : type === 'book' ? ['#', 'Title', 'Author', 'From'] : ['#', 'Title', 'From']
+      for (const label of labels) {
         const name = cell('th', label)
         name.scope = 'col'
+        if (label === '#') name.setAttribute('aria-label', 'Priority')
         head.append(name)
       }
       const body = table.createTBody()
-      for (const entry of rows) {
+      rows.forEach((entry, index) => {
         const row = body.insertRow()
+        row.dataset.queueRow = entry.id
+        const number = cell('th', String(index + 1))
+        number.scope = 'row'
+        row.append(number)
         const titleCell = row.insertCell()
         const edit = cell('button', entry.title)
         const imageUrl = httpsUrl(entry.artwork_url)
-        if (imageUrl) {
+        if (imageUrl && !compact) {
           const cover = document.createElement('img')
           cover.alt = ''
           cover.className = 'queue-thumbnail'
@@ -172,17 +169,18 @@ export function createQueue(db) {
         edit.dataset.queueId = entry.id
         edit.setAttribute('aria-label', `Edit ${entry.title}`)
         edit.addEventListener('click', () => openEditor(entry, edit))
-        titleCell.append(edit)
+        titleCell.append(edit, renderRowActions(entry, rows, index, row))
+        if (compact) return
         if (type === 'book') row.insertCell().textContent = entry.author || '—'
         const from = row.insertCell()
-        const name = pokemon[entry.pokemon_id] ?? 'Pokémon'
+        const name = pokemonName(entry.pokemon_id) || 'Pokémon'
         const badge = cell('span', source.key === 'self' ? '' : name)
         badge.className = 'queue-pokemon-name'
         if (source.key === 'self') badge.setAttribute('aria-label', 'Ditto (self-added)')
-        badge.prepend(sprite(entry.pokemon_id))
+        badge.prepend(pokemonSprite(entry.pokemon_id))
         if (source.key === 'self') badge.firstChild.alt = 'Ditto'
         from.append(badge)
-      }
+      })
       bucket.append(table)
     } else bucket.append(cell('p', 'Empty'))
     const add = cell('button', '+ ' + source.add)
@@ -192,6 +190,103 @@ export function createQueue(db) {
     add.addEventListener('click', () => openEditor({ media_type: type, source: source.key }, add))
     bucket.append(add)
     return bucket
+  }
+
+  function renderRowActions(entry, entriesInBucket, index, row) {
+    const actions = document.createElement('div')
+    actions.className = 'queue-row-actions'
+    const canRank = columns.includes(priorityColumn)
+    for (const [direction, symbol] of [[-1, '↑'], [1, '↓']]) {
+      const button = cell('button', symbol)
+      button.type = 'button'
+      button.className = 'button'
+      const label = direction < 0 ? 'up' : 'down'
+      button.dataset.queueMove = label
+      button.setAttribute('aria-label', `Move ${entry.title} ${label}`)
+      const target = entriesInBucket[index + direction]
+      button.disabled = !canRank || !target
+      button.addEventListener('click', () => move(entry, target, direction > 0, label))
+      actions.append(button)
+    }
+
+    const promote = cell('button', promoted.has(entry.id) ? 'In tier list' : 'Promote to tier list')
+    promote.type = 'button'
+    promote.className = 'button'
+    promote.dataset.queuePromote = entry.id
+    promote.disabled = !canPromote || promoted.has(entry.id)
+    promote.addEventListener('click', () => {
+      if (!owner || pending || !canPromote || promoted.has(entry.id)) return
+      openTierEditor(entry)
+    })
+    actions.append(promote)
+
+    if (!canRank || entriesInBucket.length < 2) return actions
+    row.draggable = true
+    row.addEventListener('dragstart', (event) => {
+      if (pending || event.target.closest('button')) { event.preventDefault(); return }
+      dragging = entry
+      event.dataTransfer.setData('text/plain', entry.id)
+      event.dataTransfer.effectAllowed = 'move'
+    })
+    const isTarget = () => dragging && dragging.id !== entry.id &&
+      dragging.media_type === entry.media_type && dragging.source === entry.source
+    const after = (event) => {
+      const bounds = row.getBoundingClientRect()
+      return event.clientY >= bounds.top + bounds.height / 2
+    }
+    row.addEventListener('dragover', (event) => {
+      if (!isTarget()) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      row.classList.toggle('queue-drop-after', after(event))
+      row.classList.toggle('queue-drop-before', !after(event))
+    })
+    row.addEventListener('dragleave', (event) => {
+      if (!row.contains(event.relatedTarget)) row.classList.remove('queue-drop-before', 'queue-drop-after')
+    })
+    row.addEventListener('drop', (event) => {
+      if (!isTarget()) return
+      event.preventDefault()
+      row.classList.remove('queue-drop-before', 'queue-drop-after')
+      move(dragging, entry, after(event))
+      dragging = null
+    })
+    row.addEventListener('dragend', () => {
+      dragging = null
+      board.querySelectorAll('.queue-drop-before, .queue-drop-after')
+        .forEach((node) => node.classList.remove('queue-drop-before', 'queue-drop-after'))
+    })
+    return actions
+  }
+
+  async function move(entry, anchor, after, focusDirection) {
+    if (!owner || pending || !anchor || !columns.includes(priorityColumn)) return
+    const session = version
+    pending = true
+    try {
+      const { data, error } = await db.rpc('tiershelf_move_queue_entry', {
+        entry_id: entry.id, anchor_id: anchor.id, place_after: after,
+      })
+      if (session !== version) return
+      if (error) throw error
+      const positions = new Map(data.map((row) => [row.id, row.queue_position]))
+      for (const item of entries) if (positions.has(item.id)) item.queue_position = positions.get(item.id)
+      render()
+      if (focusDirection) {
+        const row = [...board.querySelectorAll('[data-queue-row]')].find((node) => node.dataset.queueRow === entry.id)
+        const button = row?.querySelector(`[data-queue-move="${focusDirection}"]:not(:disabled)`) ?? row?.querySelector('.queue-edit')
+        button?.focus({ preventScroll: true })
+      }
+      status.textContent = `Moved ${entry.title}.`
+    } catch {
+      if (session === version) status.textContent = 'Could not reorder this entry. Refresh and try again.'
+    } finally {
+      if (session === version) pending = false
+    }
+  }
+
+  function renderSetup() {
+    byId('queue-priority-setup').hidden = !loaded || (columns.includes(priorityColumn) && canPromote)
   }
 
   async function load() {
@@ -209,18 +304,22 @@ export function createQueue(db) {
       for (let offset = 0; ; offset += pageSize) {
         let result = await fetchPage(offset)
         if (session !== version) return
-        if (offset === 0 && ['42703', 'PGRST204'].includes(result.error?.code)) {
-          columns = basicColumns
-          result = await fetchPage(offset)
-          if (session !== version) return
+        if (offset === 0) {
+          for (const fallback of [artworkColumns, basicColumns + priorityColumn, basicColumns]) {
+            if (!['42703', 'PGRST204'].includes(result.error?.code)) break
+            columns = fallback
+            result = await fetchPage(offset)
+            if (session !== version) return
+          }
         }
         if (result.error) throw result.error
         records.push(...result.data)
         if (result.data.length < pageSize) break
       }
-      byId('queue-artwork-setup').hidden = columns === artworkColumns
+      byId('queue-artwork-setup').hidden = columns.includes(',artwork_url')
       entries = records
       loaded = true
+      renderSetup()
       render()
       status.textContent = ''
     } catch (error) {
@@ -239,8 +338,8 @@ export function createQueue(db) {
   function updateAlias() {
     alias.setCustomValidity('')
     preview.replaceChildren()
-    const id = activeEntry?.source === 'self' ? ditto : species.get(pokemonKey(alias.value))
-    if (id) preview.append(sprite(id), activeEntry?.source === 'self' ? 'Ditto · Self-added' : pokemon[id])
+    const id = activeEntry?.source === 'self' ? ditto : pokemonId(alias.value)
+    if (id) preview.append(pokemonSprite(id), activeEntry?.source === 'self' ? 'Ditto · Self-added' : pokemonName(id))
   }
 
   function openEditor(entry, button) {
@@ -262,7 +361,7 @@ export function createQueue(db) {
     byId('queue-alias-field').hidden = self
     alias.disabled = self
     alias.required = !self
-    alias.value = self ? '' : pokemon[entry.pokemon_id] ?? ''
+    alias.value = self ? '' : pokemonName(entry.pokemon_id)
     remove.hidden = !entry.id
     byId('queue-editor-heading').textContent = entry.id ? 'Edit queue entry'
       : self ? 'Add for myself' : 'Add recommendation'
@@ -387,7 +486,7 @@ export function createQueue(db) {
         ?? board.querySelector(`[data-queue-add="${entry.media_type}-${entry.source}"]`)
       returnButton?.focus({ preventScroll: true })
       status.textContent = removeEntry ? 'Removed from PokéQueue.'
-        : columns === basicColumns && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
+        : !columns.includes(',artwork_url') && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
         : 'Saved to PokéQueue.'
     } catch {
       if (session === version) formStatus.textContent = 'Could not save that change. Try again.'
@@ -399,9 +498,7 @@ export function createQueue(db) {
     }
   }
 
-  const options = Object.values(pokemon).sort((a, b) => a.localeCompare(b))
-  const datalist = byId('pokemon-aliases')
-  for (const name of options) datalist.append(new Option(name, name))
+  populatePokemonOptions(byId('pokemon-aliases'))
   alias.addEventListener('input', updateAlias)
   form.addEventListener('submit', (event) => {
     event.preventDefault()
@@ -412,8 +509,8 @@ export function createQueue(db) {
       title.focus()
       return
     }
-    const pokemonId = activeEntry.source === 'self' ? ditto : species.get(pokemonKey(alias.value))
-    if (!pokemonId) {
+    const aliasId = activeEntry.source === 'self' ? ditto : pokemonId(alias.value)
+    if (!aliasId) {
       alias.setCustomValidity('Choose a Pokémon alias from the list.')
       alias.reportValidity()
       return
@@ -425,9 +522,9 @@ export function createQueue(db) {
       return
     }
     persist(false, {
-      ...(columns === artworkColumns ? { artwork_url: image || null } : {}),
+      ...(columns.includes(',artwork_url') ? { artwork_url: image || null } : {}),
       title: name, author: activeEntry.media_type === 'book' ? author.value.trim() || null : null,
-      media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: pokemonId,
+      media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: aliasId,
     })
   })
   remove.addEventListener('click', () => persist(true))
@@ -441,8 +538,26 @@ export function createQueue(db) {
     load()
   })
   retry.addEventListener('click', load)
+  compactButton.addEventListener('click', () => {
+    compact = !compact
+    if (compact) expanded.add('book')
+    compactButton.setAttribute('aria-pressed', String(compact))
+    if (loaded) render()
+  })
 
   return {
+    setPromotionState(enabled, ids) {
+      const updated = canPromote !== enabled || promoted.size !== ids.size || [...ids].some((id) => !promoted.has(id))
+      canPromote = enabled
+      promoted = ids
+      renderSetup()
+      if (loaded && updated) render()
+    },
+    finishPromotion(id) {
+      const button = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === id)
+      button?.focus({ preventScroll: true })
+      status.textContent = 'Added to your tier list.'
+    },
     setOwner(isOwner) {
       if (owner === isOwner) return
       owner = isOwner
@@ -453,7 +568,9 @@ export function createQueue(db) {
       pending = false
       activeEntry = null
       trigger = null
-      columns = artworkColumns
+      columns = artworkColumns + priorityColumn
+      dragging = null
+      byId('queue-priority-setup').hidden = true
       resetArtworkLookup()
       byId('queue-artwork-setup').hidden = true
       for (const button of [save, remove, close]) button.disabled = false
