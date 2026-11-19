@@ -1,7 +1,7 @@
 const byId = (id) => document.getElementById(id)
 const pageSize = 100
 
-export function createMailbox(db, openRecommendation) {
+export function createMailbox(db, openRecommendation, askForKey) {
   const button = byId('recommendation-mailbox')
   const dialog = byId('recommendation-dialog')
   const heading = byId('recommendation-heading')
@@ -19,6 +19,7 @@ export function createMailbox(db, openRecommendation) {
   let mode = 'demo'
   let viewerKey = null
   let version = 0
+  button.hidden = !db
 
   function setBusy(busy) {
     close.disabled = busy
@@ -148,8 +149,12 @@ export function createMailbox(db, openRecommendation) {
     }
   }
 
-  button.addEventListener('click', () => {
-    if (!db || mode === 'demo') return
+  function open() {
+    if (!db || dialog.open) return
+    if (mode === 'demo') {
+      askForKey()
+      return
+    }
     clear()
     const owner = mode === 'dymon'
     heading.textContent = owner ? 'Recommendation mailbox' : 'Recommend a book'
@@ -157,7 +162,8 @@ export function createMailbox(db, openRecommendation) {
     dialog.showModal()
     if (owner) loadInbox(version)
     else title.focus()
-  })
+  }
+  button.addEventListener('click', open)
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
@@ -208,10 +214,10 @@ export function createMailbox(db, openRecommendation) {
   dialog.addEventListener('cancel', (event) => { if (close.disabled) event.preventDefault() })
 
   return {
+    open,
     setMode(current, key) {
       mode = current
       viewerKey = current === 'viewer' ? key : null
-      button.hidden = !db || current === 'demo'
       if (dialog.open) dialog.close()
       clear()
     },

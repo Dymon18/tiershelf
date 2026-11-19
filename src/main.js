@@ -130,10 +130,13 @@ let ownerMode = false
 let viewerMode = false
 const viewer = createViewer(db, {
   mode: () => ownerMode ? 'dymon' : viewerMode ? 'viewer' : 'demo',
-  openSnapshot: ({ shelf, questlog }, key) => setMode(false, shelf, questlog, key),
+  openSnapshot: ({ shelf, questlog }, key, recommending) => {
+    setMode(false, shelf, questlog, key)
+    if (recommending) mailbox.open()
+  },
   exit: () => setMode(false, demo),
 })
-const mailbox = createMailbox(db, queue.openRecommendation)
+const mailbox = createMailbox(db, queue.openRecommendation, () => viewer.showUnlock(true))
 let editing = null
 let editorReturn = null
 let dragging = null

@@ -33,6 +33,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
   const art = byId('viewer-title-art')
   const details = byId('viewer-title-details')
   let accessVersion = 0
+  let recommending = false
   button.hidden = !db
 
   function resetKeyOutput() {
@@ -59,6 +60,20 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     resetKeyOutput()
   }
 
+  function showUnlock(forRecommendation = false) {
+    if (!db || mode() !== 'demo' || dialog.open) return
+    recommending = forRecommendation
+    byId('viewer-heading').textContent = recommending ? 'Recommend me a book!' : 'Friend mode'
+    byId('viewer-description').textContent = recommending
+      ? 'Only friends can recommend books. Do you have a friend key?'
+      : 'Enter the key Dymon shared with you to view MyShelf and QuestLog.'
+    unlock.textContent = recommending ? 'Unlock recommendations' : 'Enter Friend mode'
+    state.textContent = ''
+    key.value = ''
+    dialog.showModal()
+    key.focus()
+  }
+
   button.addEventListener('click', () => {
     if (mode() === 'viewer') {
       exit()
@@ -73,10 +88,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
       admin.showModal()
       return
     }
-    state.textContent = ''
-    key.value = ''
-    dialog.showModal()
-    key.focus()
+    showUnlock()
   })
 
   byId('viewer-form').addEventListener('submit', async (event) => {
@@ -98,7 +110,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
           ? 'Friend access is still being set up.'
           : 'Could not check the key. Try again.'
       } else if (!Array.isArray(data?.shelf) || !Array.isArray(data?.questlog)) state.textContent = 'This key did not unlock TierShelf. Check with Dymon.'
-      else openSnapshot(data, submitted)
+      else openSnapshot(data, submitted, recommending)
     } catch {
       if (version === accessVersion) state.textContent = 'Could not check the key. Try again.'
     } finally {
@@ -180,6 +192,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
 
   return {
     setMode,
+    showUnlock,
     inspect(entry) {
       if (mode() !== 'viewer') return
       byId('viewer-title').textContent = entry.title
