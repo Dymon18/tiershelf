@@ -20,6 +20,8 @@ button:disabled { cursor: wait; opacity: .65; }
 .topbar { border-bottom: 1px solid var(--border); background: #17191a; }
 .nav, .account, .intro, .toolbar, .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .nav { min-height: 72px; }
+.site-links { display: flex; align-items: center; gap: .65rem; }
+.home-link { display: inline-flex; align-items: center; text-decoration: none; }
 .brand { text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 800; letter-spacing: -.04em; }
 .mode { color: var(--muted); font: 500 .8rem ui-monospace, monospace; white-space: nowrap; }
 .button { min-height: 42px; border-radius: 8px; border: 1px solid #444a4a; background: #242829; color: #f6f5f1; padding: 8px 14px; font-weight: 700; white-space: nowrap; }
@@ -413,12 +415,12 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 
 @media (max-width: 760px) {
   .queue-entry-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .topbar .nav { flex-wrap: wrap; gap: .55rem; padding: .65rem 0; }
+  .topbar .account { flex-wrap: wrap; }
 }
 
 @media (max-width: 540px) {
   .queue-entry-grid { grid-template-columns: minmax(0, 1fr); }
-  .topbar .nav { flex-wrap: wrap; gap: .55rem; padding: .65rem 0; }
-  .topbar .account { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
