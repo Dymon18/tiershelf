@@ -41,6 +41,7 @@ const posterPreview = byId('poster-preview')
 const posterStatus = byId('poster-status')
 const posterButton = byId('find-poster')
 const posterOptions = byId('poster-options')
+const matchTitleButton = byId('match-poster-title')
 const editorStatus = byId('editor-status')
 const saveButton = byId('save-button')
 const deleteButton = byId('delete-button')
@@ -220,6 +221,7 @@ function openEditor(entry, defaultGrade = 'A') {
   authorInput.value = entry?.author ?? ''
   typeInput.value = entry?.media_type ?? filter
   byId('entry-details').hidden = ownerMode && !archiveDetails
+  byId('entry-artwork').hidden = ownerMode && !archiveDetails
   selectedCategories = new Set(entry?.categories ?? [])
   newCategory.value = ''
   yearInput.value = entry?.release_year ?? ''
@@ -239,6 +241,7 @@ function openEditor(entry, defaultGrade = 'A') {
 function renderTypeFields() {
   const isBook = typeInput.value === 'book'
   byId('entry-author-field').hidden = !isBook || (ownerMode && archiveColumns !== fullColumns)
+  byId('artwork-legend').textContent = isBook ? 'Cover' : 'Poster'
   posterButton.textContent = isBook ? 'Find cover' : 'Find poster'
   byId('entry-poster').parentElement.firstChild.textContent = isBook ? 'Cover image URL ' : 'Poster image URL '
 }
@@ -388,11 +391,11 @@ function resetPosterLookup() {
   posterSuggestions = []
   byId('poster-options-field').hidden = true
   posterOptions.replaceChildren()
+  matchTitleButton.hidden = true
 }
 
-function usePoster(poster, useSuggestedTitle = false) {
+function usePoster(poster, fromSuggestion = false) {
   if (poster.page) wikiInput.value = poster.page
-  if (useSuggestedTitle) titleInput.value = poster.title
   if (poster.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
     authorInput.value = poster.author.slice(0, 200)
   }
@@ -401,7 +404,7 @@ function usePoster(poster, useSuggestedTitle = false) {
     posterStatus.textContent = typeInput.value === 'book' ? 'Cover found. Save the title to use it.' : 'Poster found. Save the title to use it.'
     previewPoster()
   } else {
-    if (useSuggestedTitle) {
+    if (fromSuggestion) {
       posterInput.value = ''
       previewPoster()
     }
@@ -418,11 +421,20 @@ function showPosterSuggestions(result) {
     posterOptions.add(new Option(label, String(index)))
   })
   byId('poster-options-field').hidden = false
-  posterStatus.textContent = 'Select a result to use its title and image.'
+  posterStatus.textContent = 'Select a result to preview its image.'
 }
 
 posterOptions.addEventListener('change', () => {
-  if (posterOptions.value !== '') usePoster(posterSuggestions[Number(posterOptions.value)], true)
+  const selected = posterOptions.selectedIndex > 0 ? posterSuggestions[Number(posterOptions.value)] : null
+  matchTitleButton.hidden = !selected || selected.title === titleInput.value
+  if (selected) usePoster(selected, true)
+})
+matchTitleButton.addEventListener('click', () => {
+  const selected = posterSuggestions[Number(posterOptions.value)]
+  if (!selected || posterOptions.selectedIndex < 1) return
+  titleInput.value = selected.title
+  matchTitleButton.hidden = true
+  titleInput.focus()
 })
 posterInput.addEventListener('input', () => {
   resetPosterLookup()

@@ -50,6 +50,16 @@
         <label>Type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Series</option></select></label>
         <label>Tier<select id="entry-grade"></select></label>
       </div>
+      <fieldset id="entry-artwork">
+        <legend id="artwork-legend">Poster</legend>
+        <label>Wikipedia page <input id="entry-wikipedia" type="url" maxlength="2000" placeholder="Optional — look up by title"></label>
+        <button id="find-poster" type="button" class="button">Find poster</button>
+        <label id="poster-options-field" hidden><span id="poster-options-label">Did you mean?</span><select id="poster-options"></select></label>
+        <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
+        <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
+        <img id="poster-preview" alt="Poster preview" hidden>
+        <p id="poster-status" role="status"></p>
+      </fieldset>
       <fieldset id="entry-details">
         <legend>Details</legend>
         <label id="entry-author-field" hidden>Author <input id="entry-author" maxlength="200" autocomplete="off"></label>
@@ -62,12 +72,6 @@
             <button id="add-category" type="button" class="button">Add</button>
           </div>
         </fieldset>
-        <label>Wikipedia page <input id="entry-wikipedia" type="url" maxlength="2000" placeholder="Optional — look up by title"></label>
-        <button id="find-poster" type="button" class="button">Find poster</button>
-        <label id="poster-options-field" hidden><span id="poster-options-label">Did you mean?</span><select id="poster-options"></select></label>
-        <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
-        <img id="poster-preview" alt="Poster preview" hidden>
-        <p id="poster-status" role="status"></p>
       </fieldset>
       <p id="editor-status" role="status"></p>
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
