@@ -980,7 +980,6 @@ function setMode(isOwner, records, viewerQueue = null) {
   if (editor.open) editor.close()
   byId('mode').textContent = isOwner ? 'Dymon mode' : viewerMode ? 'Viewer mode' : 'Demo mode'
   byId('add-button').hidden = viewerMode
-  byId('description').textContent = viewerMode ? 'Browse Dymon’s rated movies, books, and series.' : 'Rank the movies, books, and series you finish.'
   accountButton.textContent = isOwner ? 'Sign out' : 'Dymon login'
   byId('footer-text').textContent = isOwner
     ? 'Your archive saves to your account.'

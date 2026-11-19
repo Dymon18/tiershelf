@@ -7,8 +7,8 @@ const mediaTypes = [
   { key: 'anime', label: 'Series' },
 ]
 const sources = [
-  { key: 'recommended', label: 'SideQuest', add: 'Add to SideQuest', icon: '🧭' },
-  { key: 'self', label: 'BackLog', add: 'Add to BackLog', icon: '🪵' },
+  { key: 'recommended', label: 'SideQuest', description: 'Recommendations', add: 'Add to SideQuest', icon: '🧭' },
+  { key: 'self', label: 'BackLog', description: 'Personal hunts', add: 'Add to BackLog', icon: '🪵' },
 ]
 const tableName = 'tiershelf_queue'
 const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
@@ -139,7 +139,7 @@ export function createQueue(db, openTierEditor) {
     heading.prepend(icon)
     heading.id = `queue-${type}-${source.key}`
     bucket.setAttribute('aria-labelledby', heading.id)
-    bucket.append(heading)
+    bucket.append(heading, cell('p', source.description))
 
     const entriesInBucket = group.filter((entry) => entry.source === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
