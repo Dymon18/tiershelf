@@ -24,4 +24,6 @@ Use **Dymon login** to sign in and save a title. Open the site on another device
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)
 
-QuestLog uses the species list, Pokémon sprites, and Poké Ball item sprite from [PokéAPI](https://pokeapi.co/). Pokémon artwork belongs to its respective rights holders.
+QuestLog uses the species list and Pokémon sprites from [PokéAPI](https://pokeapi.co/). Pokémon artwork belongs to its respective rights holders.
+
+The QuestLog background tiles use the compass and log graphics from [Twemoji](https://github.com/jdecked/twemoji), copyright Twitter, Inc. and other contributors, available under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The graphics were resized and arranged into a tile.

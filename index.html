@@ -13,11 +13,15 @@
   <header class="topbar">
     <div class="frame nav">
       <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
-      <div class="account"><span id="mode" class="mode">Demo mode</span><button id="account-button" class="button">Dymon login</button></div>
+      <div class="account">
+        <span id="mode" class="mode">Demo mode</span>
+        <button id="viewer-button" class="button" type="button">Viewer mode</button>
+        <button id="account-button" class="button" type="button">Dymon login</button>
+      </div>
     </div>
   </header>
   <main class="frame">
-    <nav id="archive-nav" class="section-nav" aria-label="Dymon mode" hidden>
+    <nav id="archive-nav" class="section-nav" aria-label="TierShelf sections" hidden>
       <button id="show-archive" type="button" aria-controls="archive-view" aria-pressed="true">MyShelf</button>
       <button id="show-queue" type="button" aria-controls="queue-view" aria-pressed="false">QuestLog</button>
     </nav>
@@ -61,7 +65,17 @@
       <header class="queue-heading">
         <h1 id="queue-heading" tabindex="-1">QuestLog<span aria-hidden="true">.</span></h1>
         <p>What to watch or read next.</p>
-        <button id="queue-compact" type="button" class="button" aria-pressed="false" aria-controls="queue-columns">Compact books view</button>
+        <div class="queue-toolbar">
+          <button id="queue-compact" type="button" class="button" aria-pressed="false" aria-controls="queue-columns">Compact books view</button>
+          <details class="queue-filter">
+            <summary>Filter QuestLog</summary>
+            <fieldset>
+              <legend class="visually-hidden">Show sections</legend>
+              <label><input id="queue-filter-recommended" type="checkbox" checked> <span aria-hidden="true">🧭</span> SideQuest</label>
+              <label><input id="queue-filter-self" type="checkbox" checked> <span aria-hidden="true">🪵</span> BackLog</label>
+            </fieldset>
+          </details>
+        </div>
       </header>
       <p id="queue-status" role="status"></p>
       <div id="queue-setup" class="queue-setup" hidden>
@@ -166,6 +180,47 @@
     <div class="dialog-heading"><h2 id="login-title">Dymon mode</h2><button type="button" class="icon-button" id="close-login" aria-label="Close login">×</button></div>
     <p id="login-description">Sign in with GitHub to open your private archive.</p>
     <button class="button primary" id="github-login">Continue with GitHub</button>
+  </dialog>
+  <dialog id="viewer-dialog" aria-labelledby="viewer-heading">
+    <form id="viewer-form" method="dialog">
+      <div class="dialog-heading">
+        <h2 id="viewer-heading">Viewer mode</h2>
+        <button id="close-viewer" class="icon-button" type="button" aria-label="Close viewer mode">×</button>
+      </div>
+      <p>Enter the key Dymon shared with you to view MyShelf and QuestLog.</p>
+      <p class="viewer-clue">Clue: Best city in the world?</p>
+      <label>Access key<input id="viewer-key" type="password" required maxlength="40" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <p id="viewer-status" role="status"></p>
+      <button id="unlock-viewer" type="submit" class="button primary">View TierShelf</button>
+    </form>
+  </dialog>
+
+  <dialog id="viewer-admin" aria-labelledby="viewer-admin-heading">
+    <div class="dialog-heading">
+      <h2 id="viewer-admin-heading">Viewer access</h2>
+      <button id="close-viewer-admin" class="icon-button" type="button" aria-label="Close viewer access">×</button>
+    </div>
+    <p>Share the key with friends so they can view MyShelf and QuestLog. Generating a key replaces the previous one.</p>
+    <p id="viewer-setup" hidden>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/009_viewer_access.sql" target="_blank" rel="noopener">SB viewer access migration</a> to enable sharing.</p>
+    <div class="viewer-admin-actions">
+      <button id="generate-viewer-key" class="button primary" type="button">Generate viewer key</button>
+      <button id="revoke-viewer-key" class="button" type="button">Turn off access</button>
+    </div>
+    <div id="viewer-key-output" hidden>
+      <label for="generated-viewer-key">Shareable key</label>
+      <input id="generated-viewer-key" readonly>
+      <button id="copy-viewer-key" class="button" type="button">Copy key</button>
+    </div>
+    <p id="viewer-admin-status" role="status"></p>
+  </dialog>
+
+  <dialog id="viewer-title-dialog" aria-labelledby="viewer-title">
+    <div class="dialog-heading">
+      <h2 id="viewer-title"></h2>
+      <button id="close-viewer-title" class="icon-button" type="button" aria-label="Close title details">×</button>
+    </div>
+    <img id="viewer-title-art" class="viewer-title-art" alt="" referrerpolicy="no-referrer" hidden>
+    <dl id="viewer-title-details"></dl>
   </dialog>
   <script type="module" src="/src/main.js"></script>
 </body>

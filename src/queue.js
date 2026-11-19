@@ -7,8 +7,8 @@ const mediaTypes = [
   { key: 'anime', label: 'Series' },
 ]
 const sources = [
-  { key: 'recommended', label: 'SideQuest', add: 'Add to SideQuest' },
-  { key: 'self', label: 'BackLog', add: 'Add to BackLog' },
+  { key: 'recommended', label: 'SideQuest', add: 'Add to SideQuest', icon: '🧭' },
+  { key: 'self', label: 'BackLog', add: 'Add to BackLog', icon: '🪵' },
 ]
 const tableName = 'tiershelf_queue'
 const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
@@ -50,6 +50,7 @@ export function createQueue(db, openTierEditor) {
   const archiveButton = byId('show-archive')
   const queueButton = byId('show-queue')
   const compactButton = byId('queue-compact')
+  const sourceFilters = new Map(sources.map(({ key }) => [key, byId('queue-filter-' + key)]))
   let compact = false
   let promoted = new Set()
   let canPromote = false
@@ -60,6 +61,7 @@ export function createQueue(db, openTierEditor) {
   let autofilledAuthor = ''
   let columns = artworkColumns + priorityColumn
   let owner = false
+  let viewer = false
   let version = 0
   let entries = []
   let loading = false
@@ -109,7 +111,9 @@ export function createQueue(db, openTierEditor) {
       const content = document.createElement('div')
       content.className = 'queue-column-content'
       const group = entries.filter((entry) => entry.media_type === key)
-      for (const source of sources) content.append(renderBucket(key, source, group))
+      const visibleSources = sources.filter(({ key: source }) => sourceFilters.get(source).checked)
+      if (!visibleSources.length) content.append(cell('p', 'Choose SideQuest or BackLog to show entries.'))
+      for (const source of visibleSources) content.append(renderBucket(key, source, group))
       body.append(content)
       column.append(header, body)
 
@@ -129,67 +133,73 @@ export function createQueue(db, openTierEditor) {
     const bucket = document.createElement('section')
     bucket.className = 'queue-bucket'
     const heading = cell('h3', source.label)
+    const icon = cell('span', source.icon)
+    icon.className = 'queue-source-icon'
+    icon.setAttribute('aria-hidden', 'true')
+    heading.prepend(icon)
     heading.id = `queue-${type}-${source.key}`
     bucket.setAttribute('aria-labelledby', heading.id)
     bucket.append(heading)
-    const rows = group.filter((entry) => entry.source === source.key)
+
+    const entriesInBucket = group.filter((entry) => entry.source === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
-    if (rows.length) {
-      const table = document.createElement('table')
-      table.setAttribute('aria-labelledby', heading.id)
-      const head = table.createTHead().insertRow()
-      const labels = compact ? ['#', 'Title'] : type === 'book' ? ['#', 'Title', 'Author', 'From'] : ['#', 'Title', 'From']
-      for (const label of labels) {
-        const name = cell('th', label)
-        name.scope = 'col'
-        if (label === '#') name.setAttribute('aria-label', 'Priority')
-        head.append(name)
-      }
-      const body = table.createTBody()
-      rows.forEach((entry, index) => {
-        const row = body.insertRow()
-        row.dataset.queueRow = entry.id
-        const number = cell('th', String(index + 1))
-        number.scope = 'row'
-        row.append(number)
-        const titleCell = row.insertCell()
-        const edit = cell('button', entry.title)
-        const imageUrl = httpsUrl(entry.artwork_url)
-        if (imageUrl && !compact) {
+    if (entriesInBucket.length) {
+      const list = document.createElement('ol')
+      list.className = 'queue-entry-grid'
+      entriesInBucket.forEach((entry, index) => {
+        const card = document.createElement('li')
+        card.className = 'queue-entry'
+        card.dataset.queueRow = entry.id
+        const rank = cell('span', String(index + 1))
+        rank.className = 'queue-rank'
+        const text = document.createElement('div')
+        text.className = 'queue-entry-text'
+        const title = cell(owner ? 'button' : 'strong', entry.title)
+        if (owner) {
+          title.type = 'button'
+          title.className = 'queue-edit'
+          title.dataset.queueId = entry.id
+          title.setAttribute('aria-label', `Edit ${entry.title}`)
+          title.addEventListener('click', () => openEditor(entry, title))
+        }
+        text.append(title)
+        card.append(rank)
+        const url = httpsUrl(entry.artwork_url)
+        if (url && !compact) {
           const cover = document.createElement('img')
           cover.alt = ''
           cover.className = 'queue-thumbnail'
           cover.loading = 'lazy'
           cover.referrerPolicy = 'no-referrer'
           cover.addEventListener('error', () => { cover.hidden = true }, { once: true })
-          cover.src = imageUrl.href
-          edit.prepend(cover)
+          cover.src = url.href
+          card.append(cover)
         }
-        edit.type = 'button'
-        edit.className = 'queue-edit'
-        edit.dataset.queueId = entry.id
-        edit.setAttribute('aria-label', `Edit ${entry.title}`)
-        edit.addEventListener('click', () => openEditor(entry, edit))
-        titleCell.append(edit, renderRowActions(entry, rows, index, row))
-        if (compact) return
-        if (type === 'book') row.insertCell().textContent = entry.author || '—'
-        const from = row.insertCell()
-        const name = pokemonName(entry.pokemon_id) || 'Pokémon'
-        const badge = cell('span', source.key === 'self' ? '' : name)
-        badge.className = 'queue-pokemon-name'
-        if (source.key === 'self') badge.setAttribute('aria-label', 'Ditto (BackLog)')
-        badge.prepend(pokemonSprite(entry.pokemon_id))
-        if (source.key === 'self') badge.firstChild.alt = 'Ditto'
-        from.append(badge)
+        card.append(text)
+        if (!compact) {
+          if (type === 'book' && entry.author) text.append(cell('span', entry.author))
+          const name = pokemonName(entry.pokemon_id) || 'Pokémon'
+          const badge = cell('span', source.key === 'self' ? '' : name)
+          badge.className = 'queue-pokemon-name'
+          badge.prepend(pokemonSprite(entry.pokemon_id))
+          if (source.key === 'self') badge.firstChild.alt = 'Ditto'
+          text.append(badge)
+        }
+        if (owner) card.append(renderRowActions(entry, entriesInBucket, index, card))
+        else if (promoted.has(entry.id) && !compact) text.append(cell('span', 'In MyShelf'))
+        list.append(card)
       })
-      bucket.append(table)
+      bucket.append(list)
     } else bucket.append(cell('p', 'Empty'))
-    const add = cell('button', '+ ' + source.add)
-    add.type = 'button'
-    add.className = 'button queue-add'
-    add.dataset.queueAdd = `${type}-${source.key}`
-    add.addEventListener('click', () => openEditor({ media_type: type, source: source.key }, add))
-    bucket.append(add)
+
+    if (owner) {
+      const add = cell('button', '+ ' + source.add)
+      add.type = 'button'
+      add.className = 'button queue-add'
+      add.dataset.queueAdd = `${type}-${source.key}`
+      add.addEventListener('click', () => openEditor({ media_type: type, source: source.key }, add))
+      bucket.append(add)
+    }
     return bucket
   }
 
@@ -233,7 +243,9 @@ export function createQueue(db, openTierEditor) {
       dragging.media_type === entry.media_type && dragging.source === entry.source
     const after = (event) => {
       const bounds = row.getBoundingClientRect()
-      return event.clientY >= bounds.top + bounds.height / 2
+      return compact || matchMedia('(max-width: 540px)').matches
+        ? event.clientY >= bounds.top + bounds.height / 2
+        : event.clientX >= bounds.left + bounds.width / 2
     }
     row.addEventListener('dragover', (event) => {
       if (!isTarget()) return
@@ -287,7 +299,7 @@ export function createQueue(db, openTierEditor) {
   }
 
   function renderSetup() {
-    byId('queue-priority-setup').hidden = !loaded || (columns.includes(priorityColumn) && canPromote)
+    byId('queue-priority-setup').hidden = !owner || !loaded || (columns.includes(priorityColumn) && canPromote)
   }
 
   async function load() {
@@ -534,11 +546,14 @@ export function createQueue(db, openTierEditor) {
   dialog.addEventListener('close', () => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
   archiveButton.addEventListener('click', () => switchView(false, true))
   queueButton.addEventListener('click', () => {
-    if (!owner) return
+    if (!owner && !viewer) return
     switchView(true, true)
     load()
   })
   retry.addEventListener('click', load)
+  for (const input of sourceFilters.values()) input.addEventListener('change', () => {
+    if (loaded) render()
+  })
   compactButton.addEventListener('click', () => {
     compact = !compact
     if (compact) expanded.add('book')
@@ -559,13 +574,15 @@ export function createQueue(db, openTierEditor) {
       button?.focus({ preventScroll: true })
       status.textContent = 'Added to MyShelf.'
     },
-    setOwner(isOwner) {
-      if (owner === isOwner) return
+    setOwner(isOwner, viewerEntries = null) {
+      const isViewer = viewerEntries !== null
+      if (owner === isOwner && viewer === isViewer) return
       owner = isOwner
+      viewer = isViewer
       version++
-      entries = []
+      entries = viewerEntries ?? []
       loading = false
-      loaded = false
+      loaded = viewer
       pending = false
       activeEntry = null
       trigger = null
@@ -583,10 +600,12 @@ export function createQueue(db, openTierEditor) {
       status.textContent = ''
       formStatus.textContent = ''
       setup.hidden = true
-      nav.hidden = !owner
-      const reopenQueue = owner && queueHashes.has(location.hash)
-      switchView(reopenQueue, reopenQueue || !owner)
-      if (reopenQueue) load()
+      nav.hidden = !owner && !viewer
+      for (const input of sourceFilters.values()) input.checked = true
+      const reopenQueue = (owner || viewer) && queueHashes.has(location.hash)
+      switchView(reopenQueue, reopenQueue || (!owner && !viewer))
+      if (viewer) render()
+      else if (reopenQueue) load()
     },
   }
 }

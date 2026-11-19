@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
 import { createQueue } from './queue.js'
+import { createViewer } from './viewer.js'
 import { pokemonId, pokemonName, pokemonSprite } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
@@ -122,6 +123,12 @@ let posterSuggestions = []
 let selectedArtwork = null
 let autofillVersion = 0
 let ownerMode = false
+let viewerMode = false
+const viewer = createViewer(db, {
+  mode: () => ownerMode ? 'dymon' : viewerMode ? 'viewer' : 'demo',
+  openSnapshot: ({ shelf, questlog }) => setMode(false, shelf, questlog),
+  exit: () => setMode(false, demo),
+})
 let editing = null
 let editorReturn = null
 let dragging = null
@@ -246,7 +253,7 @@ function render() {
     : `${visible.length} of ${shelf.length} titles`
   const rankUnavailable = ownerMode && !canRank
   byId('rank-setup').hidden = !rankUnavailable
-  byId('hint').textContent = matchMedia('(pointer: coarse)').matches
+  byId('hint').textContent = viewerMode ? 'Read-only · tap a title for details' : matchMedia('(pointer: coarse)').matches
     ? 'Tap a title to change its tier'
     : rankUnavailable ? 'Drag titles between tiers' : 'Drag titles within or between tiers'
   board.replaceChildren()
@@ -273,12 +280,14 @@ function render() {
       cards.append(empty)
     }
 
-    const add = document.createElement('button')
-    add.type = 'button'
-    add.className = 'add-tier'
-    add.textContent = `+ Add New ${grade} Tier`
-    add.addEventListener('click', () => openEditor(null, grade))
-    cards.append(add)
+    if (!viewerMode) {
+      const add = document.createElement('button')
+      add.type = 'button'
+      add.className = 'add-tier'
+      add.textContent = `+ Add New ${grade} Tier`
+      add.addEventListener('click', () => openEditor(null, grade))
+      cards.append(add)
+    }
 
     row.addEventListener('dragover', (event) => {
       if (!dragging) return
@@ -331,7 +340,7 @@ function clearDropMarkers() {
 }
 
 async function moveEntry(entry, grade, anchorId, after = false, restoreFocus = false) {
-  if (pendingChanges) return
+  if (pendingChanges || viewerMode) return
   if (ownerMode && !canRank) {
     if (entry.grade !== grade) {
       try { await save({ ...entry, grade }) } catch (error) { status(error.message) }
@@ -387,7 +396,7 @@ function createCard(entry) {
   const card = document.createElement('button')
   card.type = 'button'
   card.className = 'card'
-  card.draggable = true
+  card.draggable = !viewerMode
   card.dataset.entry = entry.id
   const name = document.createElement('strong')
   name.textContent = entry.title
@@ -422,6 +431,7 @@ function createCard(entry) {
   }
   card.addEventListener('click', () => openEditor(entry))
   card.addEventListener('dragstart', (event) => {
+    if (viewerMode) { event.preventDefault(); return }
     dragging = entry
     event.dataTransfer.setData('text/plain', entry.id)
     event.dataTransfer.effectAllowed = 'move'
@@ -443,6 +453,10 @@ function createCard(entry) {
 }
 
 function openEditor(entry, defaultGrade = 'A') {
+  if (viewerMode) {
+    if (entry) viewer.inspect(entry)
+    return
+  }
   const promoting = Boolean(entry?.source_queue_id && !entry?.id)
   editorReturn = { x: window.scrollX, y: window.scrollY, grade: entry?.grade ?? defaultGrade,
     queueId: promoting ? entry.source_queue_id : null }
@@ -565,6 +579,7 @@ for (const { input, button, image } of artworkChoices) {
 }
 
 async function save(record) {
+  if (viewerMode) return
   if (pendingChanges) throw new Error('Please wait for the current change to finish.')
   const version = frameVersion
   const target = entries
@@ -596,6 +611,7 @@ async function save(record) {
 }
 
 async function remove(entry) {
+  if (viewerMode) return
   if (pendingChanges) throw new Error('Please wait for the current change to finish.')
   const version = frameVersion
   const target = entries
@@ -945,12 +961,16 @@ byId('clear-categories').addEventListener('click', () => {
   render()
 })
 
-function setMode(isOwner, records) {
+function setMode(isOwner, records, viewerQueue = null) {
   frameVersion++
   ownerMode = isOwner
-  queue.setOwner(isOwner)
-  document.body.dataset.mode = isOwner ? 'dymon' : 'demo'
+  viewerMode = viewerQueue !== null
+  const mode = isOwner ? 'dymon' : viewerMode ? 'viewer' : 'demo'
+  document.body.dataset.mode = mode
+  viewer.setMode(mode)
+  queue.setOwner(isOwner, viewerQueue)
   entries = records
+  dragging = null
   filter = 'movie'
   activeCategories.clear()
   movieFilterValues.clear()
@@ -958,11 +978,15 @@ function setMode(isOwner, records) {
   search.value = ''
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
   if (editor.open) editor.close()
-  byId('mode').textContent = isOwner ? 'Dymon mode' : 'Demo mode'
+  byId('mode').textContent = isOwner ? 'Dymon mode' : viewerMode ? 'Viewer mode' : 'Demo mode'
+  byId('add-button').hidden = viewerMode
+  byId('description').textContent = viewerMode ? 'Browse Dymon’s rated movies, books, and series.' : 'Rank the movies, books, and series you finish.'
   accountButton.textContent = isOwner ? 'Sign out' : 'Dymon login'
   byId('footer-text').textContent = isOwner
-    ? 'Your archive is private and saves to your account.'
-    : 'Demo edits reset when you refresh or close this tab.'
+    ? 'Your archive saves to your account.'
+    : viewerMode ? 'You’re viewing Dymon’s collection in read-only mode.'
+      : 'Demo edits reset when you refresh or close this tab.'
+  status('')
   render()
 }
 
