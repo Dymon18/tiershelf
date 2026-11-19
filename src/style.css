@@ -507,6 +507,9 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 .queue-reading-tags { display: flex; flex-wrap: wrap; gap: .45rem .8rem; margin: .8rem 0 0; border: 1px solid var(--border); border-radius: 7px; }
 .queue-reading-tags label { display: flex; align-items: center; }
 .queue-reading-tags input { width: auto; accent-color: var(--accent); }
+.reading-tag-suggestion { flex-basis: 100%; }
+.reading-tag-suggestion p { font-size: .875rem; margin: .4rem 0 0; color: var(--muted); }
+.reading-tag-suggestion p:empty { display: none; }
 .queue-tag-list { display: flex; flex-wrap: wrap; gap: .25rem; margin: .55rem 0 0; padding: 0; list-style: none; }
 .queue-tag-list li { padding: .15rem .45rem; border: 1px solid #8c82ad; border-radius: 1rem; color: #e5dcfc; font-size: .75rem; }
 .queue-column-content > p { margin: 1rem; color: var(--muted); }

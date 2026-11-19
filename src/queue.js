@@ -1,6 +1,7 @@
 import { createPokemonPicker, ditto, extraPokemonColumn, pokemonName, pokemonSprite,
   populatePokemonOptions, recommenderIds } from './pokemon.js'
-import { findArtworkOptions, findBookOptions, httpsUrl } from './posters.js'
+import { findArtworkOptions, findBookOptions, httpsUrl, normalizeTitle } from './posters.js'
+import { readingTags, suggestBookTags } from './reading-tags.js'
 
 const mediaTypes = [
   { key: 'movie', label: 'Movies' },
@@ -17,11 +18,6 @@ const artworkColumns = basicColumns + ',artwork_url'
 const priorityColumn = ',queue_position'
 const readingColumns = ',reading_tags,source_recommendation_id'
 const standardColumns = artworkColumns + priorityColumn
-const readingTags = new Map([
-  ['cozy', 'Happy & cozy'], ['gut-wrenching', 'Gut-wrenching'],
-  ['fast-paced', 'Fast-paced'], ['slow-paced', 'Slow-paced'],
-  ['straightforward', 'Straightforward language'], ['light-read', 'Light read'],
-])
 const queueHash = '#questlog'
 const queueHashes = new Set([queueHash, '#pokequeue'])
 const byId = (id) => document.getElementById(id)
@@ -61,6 +57,9 @@ export function createQueue(db, openTierEditor) {
   const compactButton = byId('queue-compact')
   const readingFilter = byId('queue-reading-filter')
   const readingTagField = byId('queue-reading-tags')
+  const tagSuggestion = byId('queue-tag-suggestion')
+  const suggestTags = byId('queue-suggest-tags')
+  const tagStatus = byId('queue-tag-status')
   const readingInputs = new Map()
   for (const [id, name] of readingTags) {
     readingFilter.add(new Option(name, id))
@@ -68,7 +67,7 @@ export function createQueue(db, openTierEditor) {
     const input = document.createElement('input')
     input.type = 'checkbox'
     label.prepend(input)
-    readingTagField.append(label)
+    readingTagField.insertBefore(label, tagSuggestion)
     readingInputs.set(id, input)
   }
   const sourceFilters = new Map(sources.map(({ key }) => [key, byId('queue-filter-' + key)]))
@@ -78,6 +77,7 @@ export function createQueue(db, openTierEditor) {
   let dragging = null
   const expanded = new Set(mediaTypes.map(({ key }) => key))
   let lookupVersion = 0
+  let tagLookupVersion = 0
   let matches = []
   let autofilledAuthor = ''
   let columns = standardColumns + readingColumns + extraPokemonColumn
@@ -431,6 +431,7 @@ export function createQueue(db, openTierEditor) {
 
   function resetArtworkLookup() {
     lookupVersion++
+    resetTagLookup()
     matches = []
     lookup.disabled = false
     titleOptions.disabled = true
@@ -444,6 +445,7 @@ export function createQueue(db, openTierEditor) {
   }
 
   function applyArtworkMatch() {
+    resetTagLookup()
     const result = selectedMatch()
     matchTitle.disabled = !result || result.title === title.value
     if (!result) return
@@ -492,6 +494,7 @@ export function createQueue(db, openTierEditor) {
   }
 
   title.addEventListener('input', resetArtworkLookup)
+  author.addEventListener('input', resetTagLookup)
   title.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || event.isComposing) return
     event.preventDefault()
@@ -503,6 +506,7 @@ export function createQueue(db, openTierEditor) {
     const result = selectedMatch()
     if (!result) return
     title.value = result.title
+    resetTagLookup()
     matchTitle.disabled = true
     title.focus()
   })
@@ -510,6 +514,55 @@ export function createQueue(db, openTierEditor) {
   artworkPreview.addEventListener('error', () => {
     artworkPreview.hidden = true
     lookupStatus.textContent = 'The image could not load. Try another direct image URL.'
+  })
+
+  function resetTagLookup() {
+    tagLookupVersion++
+    suggestTags.disabled = false
+    tagStatus.textContent = ''
+  }
+
+  suggestTags.addEventListener('click', async () => {
+    if (!owner || !dialog.open || pending || readingTagField.disabled || suggestTags.disabled) return
+    const bookTitle = title.value.trim()
+    const bookAuthor = author.value.trim()
+    if (!bookTitle) {
+      tagStatus.textContent = 'Enter a book title to get suggestions.'
+      title.focus()
+      return
+    }
+    const match = selectedMatch()
+    if (match && normalizeTitle(match.title) !== normalizeTitle(bookTitle)) {
+      tagStatus.textContent = 'Use Match title to confirm the selected book first.'
+      return
+    }
+    const lookupId = ++tagLookupVersion
+    const stillEditing = () => lookupId === tagLookupVersion && dialog.open && !pending
+    suggestTags.disabled = true
+    tagStatus.textContent = 'Looking up reading tags…'
+    try {
+      const useMatch = match && (!bookAuthor || normalizeTitle(match.author ?? '') === normalizeTitle(bookAuthor))
+      const book = useMatch ? match : (await findBookOptions({ title: bookTitle, author: bookAuthor })).preferred
+      if (!stillEditing()) return
+      if (!book) {
+        tagStatus.textContent = 'Choose the right book in Find cover or enter its author, then try again.'
+        return
+      }
+      const tags = await suggestBookTags(book)
+      if (!stillEditing()) return
+      const additions = tags.filter((id) => !readingInputs.get(id).checked)
+      for (const id of additions) readingInputs.get(id).checked = true
+      if (additions.length) {
+        tagStatus.textContent = `Suggested ${additions.map((id) => readingTags.get(id)).join(', ')}. Review before saving.`
+      } else {
+        tagStatus.textContent = tags.length ? 'The suggested tags are already selected.'
+          : 'Open Library had no clear reading tags for this book. You can still select tags manually.'
+      }
+    } catch {
+      if (stillEditing()) tagStatus.textContent = 'Could not look up reading tags. Try again or select them manually.'
+    } finally {
+      if (lookupId === tagLookupVersion) suggestTags.disabled = false
+    }
   })
 
   async function persist(removeEntry, record) {
@@ -585,7 +638,10 @@ export function createQueue(db, openTierEditor) {
   remove.addEventListener('click', () => persist(true))
   close.addEventListener('click', () => dialog.close())
   dialog.addEventListener('cancel', (event) => { if (pending) event.preventDefault() })
-  dialog.addEventListener('close', () => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
+  dialog.addEventListener('close', () => {
+    resetTagLookup()
+    if (trigger?.isConnected) trigger.focus({ preventScroll: true })
+  })
   archiveButton.addEventListener('click', () => switchView(false, true))
   byId('return-to-tiershelf').addEventListener('click', (event) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return

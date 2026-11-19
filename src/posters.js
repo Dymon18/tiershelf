@@ -122,7 +122,7 @@ export async function findPoster({ title, type, year, page, initialPages }) {
 async function searchBooks({ title, author }) {
   if (!title) throw new Error('Enter the book title.')
   const endpoint = new URL('https://openlibrary.org/search.json')
-  endpoint.search = new URLSearchParams({ title, fields: 'title,author_name,cover_i,first_publish_year,subject', limit: '10' })
+  endpoint.search = new URLSearchParams({ title, fields: 'key,title,author_name,cover_i,first_publish_year,subject', limit: '10' })
   if (author) endpoint.searchParams.set('author', author)
 
   let response
@@ -140,6 +140,7 @@ async function searchBooks({ title, author }) {
 function bookDetails(result) {
   const author = result.author_name?.join(', ')
   return {
+    workKey: result.key,
     title: result.title,
     description: author,
     image: result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false` : undefined,
