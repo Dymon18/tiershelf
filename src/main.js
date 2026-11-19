@@ -16,6 +16,7 @@ const starterCategories = {
 const basicColumns = 'id,title,media_type,grade'
 const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
 const fullColumns = detailColumns + ',author'
+const rankedColumns = fullColumns + ',tier_position'
 const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
@@ -32,6 +33,8 @@ const authorInput = byId('entry-author')
 const gradeInput = byId('entry-grade')
 const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
+const filterOptions = byId('filter-options')
+const categoryMatch = byId('category-match')
 const categoryList = byId('entry-categories')
 const newCategory = byId('new-category')
 const yearInput = byId('entry-year')
@@ -51,6 +54,12 @@ const deleteButton = byId('delete-button')
 const filters = document.querySelectorAll('[data-filter]')
 const demo = [
   {
+    id: 'demo-kpop', title: 'KPop Demon Hunters', media_type: 'movie', grade: 'A',
+    categories: ['Animation', 'Musical'], release_year: 2025,
+    wikipedia_url: 'https://en.wikipedia.org/wiki/KPop_Demon_Hunters',
+    poster_url: 'https://upload.wikimedia.org/wikipedia/en/9/93/KPDHposter.jpeg',
+  },
+  {
     id: 'demo-pacific-rim', title: 'Pacific Rim', media_type: 'movie', grade: 'S',
     categories: ['Action', 'Sci-fi'], release_year: 2013,
     wikipedia_url: 'https://en.wikipedia.org/wiki/Pacific_Rim_(film)',
@@ -65,7 +74,8 @@ const demo = [
 ]
 let entries = demo
 let filter = 'movie'
-let category = ''
+const activeCategories = new Set()
+let canRank = true
 let archiveDetails = true
 let archiveColumns = fullColumns
 let selectedCategories = new Set()
@@ -98,21 +108,50 @@ function categoriesFor(type) {
 }
 
 function renderCategoryFilter() {
-  byId('category-filter-label').textContent = filter === 'book' ? 'Genre' : 'Category'
+  const heading = filter === 'book' ? 'Genres' : 'Categories'
+  categoryFilter.hidden = ownerMode && !archiveDetails
   const options = categoriesFor(filter)
-  if (!options.some((name) => name.toLowerCase() === category)) category = ''
-  categoryFilter.replaceChildren(new Option(filter === 'book' ? 'All genres' : 'All categories', ''))
-  for (const name of options) categoryFilter.add(new Option(name, name.toLowerCase()))
-  categoryFilter.value = category
-  categoryFilter.disabled = ownerMode && !archiveDetails
+  const available = new Set(options.map((name) => name.toLowerCase()))
+  for (const key of activeCategories) if (!available.has(key)) activeCategories.delete(key)
+  byId('category-filter-label').textContent = activeCategories.size ? `${heading} (${activeCategories.size})` : heading
+  const focused = document.activeElement?.dataset.category
+  filterOptions.replaceChildren()
+  let restoreFocus
+  for (const name of options) {
+    const key = name.toLowerCase()
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.dataset.category = key
+    checkbox.checked = activeCategories.has(key)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) activeCategories.add(key)
+      else activeCategories.delete(key)
+      render()
+    })
+    if (focused === key) restoreFocus = checkbox
+    label.append(checkbox, name)
+    filterOptions.append(label)
+  }
+  restoreFocus?.focus()
+}
+
+function tierOrder(a, b) {
+  return (a.tier_position ?? Infinity) - (b.tier_position ?? Infinity)
 }
 
 function render() {
   renderCategoryFilter()
   const query = normalizeTitle(search.value)
   const shelf = entries.filter((entry) => entry.media_type === filter)
+  const keys = [...activeCategories]
+  const matchCategory = (entry) => {
+    if (!keys.length) return true
+    const tags = new Set((entry.categories ?? []).map((name) => name.toLowerCase()))
+    return categoryMatch.value === 'any' ? keys.some((key) => tags.has(key)) : keys.every((key) => tags.has(key))
+  }
   const visible = shelf.filter((entry) =>
-    (!category || entry.categories?.some((name) => name.toLowerCase() === category)) &&
+    matchCategory(entry) &&
     (normalizeTitle(entry.title).includes(query) || normalizeTitle(entry.author ?? '').includes(query)),
   )
   byId('count').textContent = visible.length === shelf.length
@@ -120,7 +159,7 @@ function render() {
     : `${visible.length} of ${shelf.length} titles`
   byId('hint').textContent = matchMedia('(pointer: coarse)').matches
     ? 'Tap a title to change its tier'
-    : 'Drag titles between tiers'
+    : 'Drag titles within or between tiers'
   board.replaceChildren()
   for (const [grade, color] of Object.entries(grades)) {
     const row = document.createElement('section')
@@ -136,12 +175,12 @@ function render() {
 
     const cards = document.createElement('div')
     cards.className = 'cards'
-    const ranked = visible.filter((entry) => entry.grade === grade)
+    const ranked = visible.filter((entry) => entry.grade === grade).sort(tierOrder)
     for (const entry of ranked) cards.append(createCard(entry))
     if (!ranked.length) {
       const empty = document.createElement('span')
       empty.className = 'empty'
-      empty.textContent = query || category ? 'No matching titles' : 'No titles yet'
+      empty.textContent = query || activeCategories.size ? 'No matching titles' : 'No titles yet'
       cards.append(empty)
     }
 
@@ -153,28 +192,91 @@ function render() {
     cards.append(add)
 
     row.addEventListener('dragover', (event) => {
-      if (!dragging || dragging.grade === grade) return
+      if (!dragging) return
       event.preventDefault()
       event.dataTransfer.dropEffect = 'move'
       row.classList.add('over')
+      clearDropMarkers()
+      const target = event.target.closest('.card')
+      if (target && target.dataset.entry !== dragging.id) {
+        target.classList.add(isAfter(event, target) ? 'drop-after' : 'drop-before')
+      }
     })
     row.addEventListener('dragleave', (event) => {
-      if (!row.contains(event.relatedTarget)) row.classList.remove('over')
+      if (row.contains(event.relatedTarget)) return
+      row.classList.remove('over')
+      clearDropMarkers()
     })
-    row.addEventListener('drop', async (event) => {
+    row.addEventListener('drop', (event) => {
       event.preventDefault()
       row.classList.remove('over')
+      clearDropMarkers()
       const entry = dragging
       dragging = null
-      if (!entry || entry.grade === grade) return
-      try {
-        await save({ ...entry, grade })
-      } catch (error) {
-        status(error.message)
+      const target = event.target.closest('.card')
+      if (entry && target?.dataset.entry !== entry.id) {
+        moveEntry(entry, grade, target?.dataset.entry, target && isAfter(event, target))
       }
     })
     row.append(heading, cards)
     board.append(row)
+  }
+}
+
+function isAfter(event, card) {
+  const bounds = card.getBoundingClientRect()
+  return event.clientX >= bounds.left + bounds.width / 2
+}
+
+function clearDropMarkers() {
+  board.querySelectorAll('.drop-before, .drop-after').forEach((card) => card.classList.remove('drop-before', 'drop-after'))
+}
+
+async function moveEntry(entry, grade, anchorId, after = false, restoreFocus = false) {
+  if (pendingChanges) return
+  if (ownerMode && !canRank) {
+    if (entry.grade !== grade) {
+      try { await save({ ...entry, grade }) } catch (error) { status(error.message) }
+    } else {
+      status('Run the Supabase tier order migration to save custom positions.')
+    }
+    return
+  }
+
+  const version = frameVersion
+  const movingOwner = ownerMode
+  try {
+    if (movingOwner) {
+      pendingChanges++
+      accountButton.disabled = true
+      const { data, error } = await db.rpc('tiershelf_move_entry', {
+        entry_id: entry.id, destination: grade, anchor_id: anchorId ?? null, place_after: Boolean(after),
+      })
+      if (error) throw new Error('Could not move this title. If the archive changed on another device, refresh and try again.')
+      if (version !== frameVersion) return
+      const positions = new Map(data.map((item) => [item.id, item]))
+      entries = entries.map((item) => positions.has(item.id) ? { ...item, ...positions.get(item.id) } : item)
+    } else {
+      const ordered = entries.filter((item) => item.id !== entry.id &&
+        item.media_type === entry.media_type && item.grade === grade).sort(tierOrder)
+      const anchor = ordered.findIndex((item) => item.id === anchorId)
+      const position = anchor < 0 ? ordered.length : anchor + Number(Boolean(after))
+      ordered.splice(position, 0, entry)
+      ordered.forEach((item, index) => {
+        item.grade = grade
+        item.tier_position = index + 1
+      })
+    }
+    render()
+    if (restoreFocus) board.querySelector(`[data-entry="${CSS.escape(entry.id)}"]`)?.focus()
+    status(`Moved ${entry.title} in tier ${grade}.`)
+  } catch (error) {
+    status(error.message)
+  } finally {
+    if (movingOwner) {
+      pendingChanges--
+      if (version === frameVersion) accountButton.disabled = false
+    }
   }
 }
 
@@ -212,8 +314,17 @@ function createCard(entry) {
     event.dataTransfer.setData('text/plain', entry.id)
     event.dataTransfer.effectAllowed = 'move'
   })
+  card.addEventListener('keydown', (event) => {
+    if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return
+    const after = event.key === 'ArrowRight'
+    const target = after ? card.nextElementSibling : card.previousElementSibling
+    if (!target?.dataset.entry) return
+    event.preventDefault()
+    moveEntry(entry, entry.grade, target.dataset.entry, after, true)
+  })
   card.addEventListener('dragend', () => {
     dragging = null
+    clearDropMarkers()
     board.querySelectorAll('.over').forEach((row) => row.classList.remove('over'))
   })
   return card
@@ -245,7 +356,7 @@ function openEditor(entry, defaultGrade = 'A') {
 
 function renderTypeFields() {
   const isBook = typeInput.value === 'book'
-  byId('entry-author-field').hidden = !isBook || (ownerMode && archiveColumns !== fullColumns)
+  byId('entry-author-field').hidden = !isBook || (ownerMode && !archiveColumns.includes(',author'))
   byId('artwork-legend').textContent = isBook ? 'Cover' : 'Poster'
   posterButton.textContent = isBook ? 'Find cover' : 'Find poster'
   byId('entry-poster').parentElement.firstChild.textContent = isBook ? 'Cover image URL ' : 'Poster image URL '
@@ -595,21 +706,26 @@ byId('entry-form').addEventListener('submit', (event) => {
       wikipedia_url: page || null, poster_url: image || null,
     })
   }
-  if (!ownerMode || archiveColumns === fullColumns) {
+  if (!ownerMode || archiveColumns.includes(',author')) {
     record.author = typeInput.value === 'book' ? authorInput.value.trim() || null : null
   }
+  if ((!ownerMode || canRank) && editing &&
+    (editing.grade !== record.grade || editing.media_type !== record.media_type)) record.tier_position = null
+  else if (!ownerMode && editing) record.tier_position = editing.tier_position
   submitEditor(() => save(record), editing?.id)
 })
 deleteButton.addEventListener('click', () => submitEditor(() => remove(editing)))
 filters.forEach((button) => button.addEventListener('click', () => {
   filter = button.dataset.filter
-  category = ''
+  activeCategories.clear()
+  categoryFilter.open = false
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
   render()
 }))
 search.addEventListener('input', render)
-categoryFilter.addEventListener('change', () => {
-  category = categoryFilter.value
+categoryMatch.addEventListener('change', render)
+byId('clear-categories').addEventListener('click', () => {
+  activeCategories.clear()
   render()
 })
 
@@ -618,7 +734,8 @@ function setMode(isOwner, records) {
   ownerMode = isOwner
   entries = records
   filter = 'movie'
-  category = ''
+  activeCategories.clear()
+  categoryFilter.open = false
   search.value = ''
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
   if (editor.open) editor.close()
@@ -682,9 +799,13 @@ if (db) {
       }
       const loadEntries = (columns) => db.from('tiershelf_entries')
         .select(columns).order('created_at').order('id')
-      let columns = fullColumns
+      let columns = rankedColumns
       let result = await loadEntries(columns)
       const missingColumn = () => ['42703', 'PGRST204'].includes(result.error?.code)
+      if (missingColumn()) {
+        columns = fullColumns
+        result = await loadEntries(columns)
+      }
       if (missingColumn()) {
         columns = detailColumns
         result = await loadEntries(columns)
@@ -702,10 +823,12 @@ if (db) {
         return
       }
       archiveColumns = columns
+      canRank = columns === rankedColumns
       archiveDetails = columns !== basicColumns
       setMode(true, data)
       if (!archiveDetails) status('Run the Supabase entry details migration to save categories and posters.')
-      else if (columns !== fullColumns) status('Run the Supabase book author migration to save authors.')
+      else if (!columns.includes(',author')) status('Run the Supabase book author migration to save authors.')
+      else if (!canRank) status('Run the Supabase tier order migration to save custom positions.')
       else status('')
     }, 0)
   })

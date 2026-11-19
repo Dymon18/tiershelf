@@ -203,3 +203,26 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 
 #autofill-status { color: var(--muted); font-size: .875rem; }
 #autofill-status:empty { display: none; }
+
+.category-filter { position: relative; }
+.category-filter summary { cursor: pointer; color: #f6f5f1; }
+.filter-panel {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + .5rem);
+  right: 0;
+  width: min(20rem, calc(100vw - 32px));
+  padding: .75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px #0009;
+}
+.filter-panel .category-options { margin-top: .75rem; }
+.filter-panel .category-options label { cursor: pointer; }
+.card.drop-before { box-shadow: -4px 0 var(--grade); }
+.card.drop-after { box-shadow: 4px 0 var(--grade); }
+
+@media (max-width: 600px) {
+  .filter-panel { position: static; margin-top: .5rem; width: auto; max-width: 20rem; }
+}

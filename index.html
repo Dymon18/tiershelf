@@ -33,7 +33,14 @@
           <button data-filter="book" aria-pressed="false">Books</button>
           <button data-filter="anime" aria-pressed="false">Series</button>
         </div>
-        <label class="category-filter"><span id="category-filter-label">Category</span><select id="category-filter"></select></label>
+        <details id="category-filter" class="category-filter">
+          <summary id="category-filter-label">Categories</summary>
+          <div class="filter-panel">
+            <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
+            <button id="clear-categories" class="button" type="button">Clear</button>
+            <div id="filter-options" class="category-options"></div>
+          </div>
+        </details>
         <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
       </div>
       <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
