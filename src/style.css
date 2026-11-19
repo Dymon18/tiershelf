@@ -147,7 +147,7 @@ h1 { letter-spacing: -.025em; }
   flex: none;
 }
 
-.poster-card img { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.poster-card img { pointer-events: none; display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .card.poster-card strong, .card.poster-card span {
   position: absolute;
   width: 1px;
@@ -241,3 +241,6 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 #movie-filters select { width: 100%; }
 
 .filter-panel { max-height: min(65vh, 32rem); overflow: auto; }
+
+.setup-note { margin: 0 0 .75rem; color: var(--muted); font-size: .875rem; }
+.setup-note a { color: var(--accent); }

@@ -113,6 +113,7 @@ let selectedArtwork = null
 let autofillVersion = 0
 let ownerMode = false
 let editing = null
+let editorReturn = null
 let dragging = null
 let pending = false
 let pendingChanges = 0
@@ -231,9 +232,11 @@ function render() {
   byId('count').textContent = visible.length === shelf.length
     ? `${shelf.length} ${shelf.length === 1 ? 'title' : 'titles'}`
     : `${visible.length} of ${shelf.length} titles`
+  const rankUnavailable = ownerMode && !canRank
+  byId('rank-setup').hidden = !rankUnavailable
   byId('hint').textContent = matchMedia('(pointer: coarse)').matches
     ? 'Tap a title to change its tier'
-    : 'Drag titles within or between tiers'
+    : rankUnavailable ? 'Drag titles between tiers' : 'Drag titles within or between tiers'
   board.replaceChildren()
   for (const [grade, color] of Object.entries(grades)) {
     const row = document.createElement('section')
@@ -268,13 +271,13 @@ function render() {
     row.addEventListener('dragover', (event) => {
       if (!dragging) return
       event.preventDefault()
-      event.dataTransfer.dropEffect = 'move'
-      row.classList.add('over')
+      const blocked = rankUnavailable && dragging.grade === grade
+      event.dataTransfer.dropEffect = blocked ? 'none' : 'move'
+      row.classList.toggle('over', !blocked)
       clearDropMarkers()
-      const target = event.target.closest('.card')
-      if (target && target.dataset.entry !== dragging.id) {
-        target.classList.add(isAfter(event, target) ? 'drop-after' : 'drop-before')
-      }
+      if (blocked) return
+      const { anchor, after } = dropPosition(event, cards, dragging.id)
+      anchor?.classList.add(after ? 'drop-after' : 'drop-before')
     })
     row.addEventListener('dragleave', (event) => {
       if (row.contains(event.relatedTarget)) return
@@ -282,24 +285,33 @@ function render() {
       clearDropMarkers()
     })
     row.addEventListener('drop', (event) => {
+      if (!dragging) return
       event.preventDefault()
       row.classList.remove('over')
       clearDropMarkers()
       const entry = dragging
       dragging = null
-      const target = event.target.closest('.card')
-      if (entry && target?.dataset.entry !== entry.id) {
-        moveEntry(entry, grade, target?.dataset.entry, target && isAfter(event, target))
-      }
+      if (event.target.closest('.card')?.dataset.entry === entry.id) return
+      const { anchor, after } = dropPosition(event, cards, entry.id)
+      if (anchor || entry.grade !== grade) moveEntry(entry, grade, anchor?.dataset.entry, after)
     })
     row.append(heading, cards)
     board.append(row)
   }
 }
 
-function isAfter(event, card) {
-  const bounds = card.getBoundingClientRect()
-  return event.clientX >= bounds.left + bounds.width / 2
+function dropPosition(event, container, entryId) {
+  const candidates = [...container.querySelectorAll('.card')]
+    .filter((card) => card.dataset.entry !== entryId)
+    .map((card) => ({ card, bounds: card.getBoundingClientRect() }))
+  if (!candidates.length) return { anchor: null, after: false }
+
+  const distance = ({ bounds }) => Math.max(bounds.top - event.clientY, event.clientY - bounds.bottom, 0)
+  // A tier can wrap. Resolve the visual row before resolving its horizontal gap.
+  const nearest = candidates.reduce((best, candidate) => distance(candidate) < distance(best) ? candidate : best)
+  const line = candidates.filter(({ bounds }) => Math.abs(bounds.top - nearest.bounds.top) < 2)
+  const next = line.find(({ bounds }) => event.clientX < bounds.left + bounds.width / 2)
+  return next ? { anchor: next.card, after: false } : { anchor: line.at(-1).card, after: true }
 }
 
 function clearDropMarkers() {
@@ -326,7 +338,12 @@ async function moveEntry(entry, grade, anchorId, after = false, restoreFocus = f
       const { data, error } = await db.rpc('tiershelf_move_entry', {
         entry_id: entry.id, destination: grade, anchor_id: anchorId ?? null, place_after: Boolean(after),
       })
-      if (error) throw new Error('Could not move this title. If the archive changed on another device, refresh and try again.')
+      if (error?.code === 'PGRST202' || error?.code === '42703') {
+        canRank = false
+        render()
+        throw new Error('Run the SB tier order migration and refresh to save custom positions.')
+      }
+      if (error) throw new Error('Could not move this title. Refresh and try again.')
       if (version !== frameVersion) return
       const positions = new Map(data.map((item) => [item.id, item]))
       entries = entries.map((item) => positions.has(item.id) ? { ...item, ...positions.get(item.id) } : item)
@@ -342,7 +359,7 @@ async function moveEntry(entry, grade, anchorId, after = false, restoreFocus = f
       })
     }
     render()
-    if (restoreFocus) board.querySelector(`[data-entry="${CSS.escape(entry.id)}"]`)?.focus()
+    if (restoreFocus) board.querySelector(`[data-entry="${CSS.escape(entry.id)}"]`)?.focus({ preventScroll: true })
     status(`Moved ${entry.title} in tier ${grade}.`)
   } catch (error) {
     status(error.message)
@@ -405,6 +422,7 @@ function createCard(entry) {
 }
 
 function openEditor(entry, defaultGrade = 'A') {
+  editorReturn = { x: window.scrollX, y: window.scrollY, grade: entry?.grade ?? defaultGrade }
   editing = entry ?? null
   byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
@@ -569,10 +587,16 @@ async function submitEditor(action, focusId) {
   byId('close-editor').disabled = true
   editorStatus.textContent = ''
   try {
+    const returnTo = editorReturn
     await action()
     editor.close()
-    const editedCard = focusId && document.querySelector(`[data-entry="${CSS.escape(focusId)}"]`)
-    ;(editedCard || byId('add-button')).focus()
+    const editedCard = focusId && board.querySelector(`[data-entry="${CSS.escape(focusId)}"]`)
+    const tierAdd = byId('tier-' + returnTo.grade)?.parentElement.querySelector('.add-tier')
+    const focusTarget = editedCard || tierAdd || byId('add-button')
+    focusTarget.focus({ preventScroll: true })
+    if (window.scrollX !== returnTo.x || window.scrollY !== returnTo.y) {
+      window.scrollTo({ left: returnTo.x, top: returnTo.y, behavior: 'instant' })
+    }
   } catch (error) {
     editorStatus.textContent = error.message
   } finally {
@@ -973,7 +997,6 @@ if (db) {
       if (!archiveDetails) status('Run the Supabase entry details migration to save categories and posters.')
       else if (!columns.includes(',author')) status('Run the Supabase book author migration to save authors.')
       else if (!columns.includes(movieColumn) && canRank) status('Run the Supabase movie details migration to save the new movie fields.')
-      else if (!canRank) status('Run the Supabase tier order migration to save custom positions.')
       else status('')
     }, 0)
   })
