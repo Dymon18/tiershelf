@@ -1,4 +1,5 @@
 import pokemon from './pokemon.json'
+import { findArtworkOptions, findBookOptions, httpsUrl } from './posters.js'
 
 const mediaTypes = [
   { key: 'movie', label: 'Movies' },
@@ -11,7 +12,9 @@ const sources = [
 ]
 const ditto = 132
 const tableName = 'tiershelf_queue'
-const columns = 'id,title,media_type,author,source,pokemon_id,created_at'
+const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
+const artworkColumns = basicColumns + ',artwork_url'
+const queueHash = '#pokequeue'
 const byId = (id) => document.getElementById(id)
 const pokemonKey = (name) => name.normalize('NFD').replace(/\p{M}/gu, '')
   .toLowerCase().replaceAll('♀', 'f').replaceAll('♂', 'm').replace(/[^a-z0-9]+/g, '')
@@ -48,6 +51,12 @@ export function createQueue(db) {
   const form = byId('queue-form')
   const title = byId('queue-title')
   const author = byId('queue-author')
+  const lookup = byId('queue-find-artwork')
+  const titleOptions = byId('queue-title-options')
+  const matchTitle = byId('queue-match-title')
+  const artwork = byId('queue-artwork-url')
+  const artworkPreview = byId('queue-artwork-preview')
+  const lookupStatus = byId('queue-lookup-status')
   const alias = byId('queue-alias')
   const preview = byId('queue-alias-preview')
   const formStatus = byId('queue-editor-status')
@@ -57,6 +66,10 @@ export function createQueue(db) {
   const archiveButton = byId('show-archive')
   const queueButton = byId('show-queue')
   const expanded = new Set(mediaTypes.map(({ key }) => key))
+  let lookupVersion = 0
+  let matches = []
+  let autofilledAuthor = ''
+  let columns = artworkColumns
   let owner = false
   let version = 0
   let entries = []
@@ -66,7 +79,13 @@ export function createQueue(db) {
   let activeEntry = null
   let trigger = null
 
-  function switchView(showQueue) {
+  function switchView(showQueue, remember = false) {
+    if (remember) {
+      const url = new URL(location.href)
+      if (showQueue) url.hash = queueHash
+      else if (url.hash === queueHash) url.hash = ''
+      history.replaceState(history.state, '', url)
+    }
     document.body.dataset.view = showQueue ? 'queue' : 'archive'
     view.hidden = !showQueue
     archive.hidden = showQueue
@@ -137,6 +156,17 @@ export function createQueue(db) {
         const row = body.insertRow()
         const titleCell = row.insertCell()
         const edit = cell('button', entry.title)
+        const imageUrl = httpsUrl(entry.artwork_url)
+        if (imageUrl) {
+          const cover = document.createElement('img')
+          cover.alt = ''
+          cover.className = 'queue-thumbnail'
+          cover.loading = 'lazy'
+          cover.referrerPolicy = 'no-referrer'
+          cover.addEventListener('error', () => { cover.hidden = true }, { once: true })
+          cover.src = imageUrl.href
+          edit.prepend(cover)
+        }
         edit.type = 'button'
         edit.className = 'queue-edit'
         edit.dataset.queueId = entry.id
@@ -174,14 +204,21 @@ export function createQueue(db) {
     try {
       const records = []
       const pageSize = 500
+      const fetchPage = (offset) => db.from(tableName).select(columns).order('created_at').order('id')
+        .range(offset, offset + pageSize - 1)
       for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await db.from(tableName).select(columns).order('created_at').order('id')
-          .range(offset, offset + pageSize - 1)
+        let result = await fetchPage(offset)
         if (session !== version) return
-        if (error) throw error
-        records.push(...data)
-        if (data.length < pageSize) break
+        if (offset === 0 && ['42703', 'PGRST204'].includes(result.error?.code)) {
+          columns = basicColumns
+          result = await fetchPage(offset)
+          if (session !== version) return
+        }
+        if (result.error) throw result.error
+        records.push(...result.data)
+        if (result.data.length < pageSize) break
       }
+      byId('queue-artwork-setup').hidden = columns === artworkColumns
       entries = records
       loaded = true
       render()
@@ -212,9 +249,15 @@ export function createQueue(db) {
     trigger = button
     title.value = entry.title ?? ''
     author.value = entry.author ?? ''
+    autofilledAuthor = ''
+    artwork.value = entry.artwork_url ?? ''
+    resetArtworkLookup()
+    renderArtwork()
     const book = entry.media_type === 'book'
     byId('queue-author-field').hidden = !book
     author.disabled = !book
+    lookup.textContent = book ? 'Find cover' : 'Find poster'
+    byId('queue-artwork-field').firstChild.textContent = book ? 'Cover image URL' : 'Poster image URL'
     const self = entry.source === 'self'
     byId('queue-alias-field').hidden = self
     alias.disabled = self
@@ -228,6 +271,96 @@ export function createQueue(db) {
     dialog.showModal()
     title.focus()
   }
+
+  function renderArtwork() {
+    const url = httpsUrl(artwork.value.trim())
+    artworkPreview.hidden = !url
+    if (url) artworkPreview.src = url.href
+    else artworkPreview.removeAttribute('src')
+  }
+
+  function resetArtworkLookup() {
+    lookupVersion++
+    matches = []
+    lookup.disabled = false
+    titleOptions.disabled = true
+    titleOptions.replaceChildren(new Option('Find a cover or poster to see matches', ''))
+    matchTitle.hidden = true
+    lookupStatus.textContent = ''
+  }
+
+  function selectedMatch() {
+    return titleOptions.value === '' ? null : matches[Number(titleOptions.value)]
+  }
+
+  function applyArtworkMatch() {
+    const result = selectedMatch()
+    matchTitle.hidden = !result || result.title === title.value
+    if (!result) return
+    artwork.value = result.image ?? ''
+    renderArtwork()
+    if (!author.disabled && (!author.value.trim() || author.value === autofilledAuthor)) {
+      autofilledAuthor = result.author?.slice(0, 200) ?? ''
+      author.value = autofilledAuthor
+    }
+    lookupStatus.textContent = result.image ? 'Image found.' : 'This result has no image. You can paste a direct image URL.'
+  }
+
+  async function findArtwork() {
+    if (!activeEntry || !owner || lookup.disabled) return
+    const name = title.value.trim()
+    if (!name) {
+      lookupStatus.textContent = 'Enter a title first.'
+      title.focus()
+      return
+    }
+    resetArtworkLookup()
+    const lookupId = lookupVersion
+    lookup.disabled = true
+    lookupStatus.textContent = 'Looking up titles…'
+    const type = activeEntry.media_type
+    try {
+      const manualAuthor = author.value === autofilledAuthor ? '' : author.value.trim()
+      const result = type === 'book' ? await findBookOptions({ title: name, author: manualAuthor })
+        : await findArtworkOptions({ title: name, type, year: '', page: '', author: '' })
+      if (lookupId !== lookupVersion || !dialog.open) return
+      matches = result.suggestions
+      titleOptions.replaceChildren(new Option('Choose a result', ''))
+      matches.forEach((item, index) => titleOptions.add(new Option(
+        item.description ? `${item.title} — ${item.description}` : item.title, String(index),
+      )))
+      titleOptions.disabled = false
+      if (result.preferred) {
+        titleOptions.value = String(matches.indexOf(result.preferred))
+        applyArtworkMatch()
+      } else lookupStatus.textContent = 'Choose a result under Title.'
+    } catch (error) {
+      if (lookupId === lookupVersion && dialog.open) lookupStatus.textContent = error.message
+    } finally {
+      if (lookupId === lookupVersion) lookup.disabled = false
+    }
+  }
+
+  title.addEventListener('input', resetArtworkLookup)
+  title.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing) return
+    event.preventDefault()
+    findArtwork()
+  })
+  lookup.addEventListener('click', findArtwork)
+  titleOptions.addEventListener('change', applyArtworkMatch)
+  matchTitle.addEventListener('click', () => {
+    const result = selectedMatch()
+    if (!result) return
+    title.value = result.title
+    matchTitle.hidden = true
+    title.focus()
+  })
+  artwork.addEventListener('input', renderArtwork)
+  artworkPreview.addEventListener('error', () => {
+    artworkPreview.hidden = true
+    lookupStatus.textContent = 'The image could not load. Try another direct image URL.'
+  })
 
   async function persist(removeEntry, record) {
     if (!owner || pending) return
@@ -253,7 +386,9 @@ export function createQueue(db) {
       const returnButton = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === data.id)
         ?? board.querySelector(`[data-queue-add="${entry.media_type}-${entry.source}"]`)
       returnButton?.focus({ preventScroll: true })
-      status.textContent = removeEntry ? 'Removed from PokéQueue.' : 'Saved to PokéQueue.'
+      status.textContent = removeEntry ? 'Removed from PokéQueue.'
+        : columns === basicColumns && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
+        : 'Saved to PokéQueue.'
     } catch {
       if (session === version) formStatus.textContent = 'Could not save that change. Try again.'
     } finally {
@@ -283,7 +418,14 @@ export function createQueue(db) {
       alias.reportValidity()
       return
     }
+    const image = artwork.value.trim()
+    if (image && !httpsUrl(image)) {
+      formStatus.textContent = 'Enter a direct HTTPS image URL.'
+      artwork.focus()
+      return
+    }
     persist(false, {
+      ...(columns === artworkColumns ? { artwork_url: image || null } : {}),
       title: name, author: activeEntry.media_type === 'book' ? author.value.trim() || null : null,
       media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: pokemonId,
     })
@@ -292,10 +434,10 @@ export function createQueue(db) {
   close.addEventListener('click', () => dialog.close())
   dialog.addEventListener('cancel', (event) => { if (pending) event.preventDefault() })
   dialog.addEventListener('close', () => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
-  archiveButton.addEventListener('click', () => switchView(false))
+  archiveButton.addEventListener('click', () => switchView(false, true))
   queueButton.addEventListener('click', () => {
     if (!owner) return
-    switchView(true)
+    switchView(true, true)
     load()
   })
   retry.addEventListener('click', load)
@@ -311,16 +453,22 @@ export function createQueue(db) {
       pending = false
       activeEntry = null
       trigger = null
+      columns = artworkColumns
+      resetArtworkLookup()
+      byId('queue-artwork-setup').hidden = true
       for (const button of [save, remove, close]) button.disabled = false
       if (dialog.open) dialog.close()
       form.reset()
+      renderArtwork()
       preview.replaceChildren()
       board.replaceChildren()
       status.textContent = ''
       formStatus.textContent = ''
       setup.hidden = true
       nav.hidden = !owner
-      switchView(false)
+      const reopenQueue = owner && location.hash === queueHash
+      switchView(reopenQueue, !owner)
+      if (reopenQueue) load()
     },
   }
 }

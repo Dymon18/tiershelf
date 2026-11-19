@@ -67,6 +67,9 @@
         <p>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/006_pokequeue.sql" target="_blank" rel="noopener">SB PokéQueue migration</a> to start saving your queue.</p>
         <button type="button" id="queue-retry" class="button" hidden>Try again</button>
       </div>
+      <p id="queue-artwork-setup" class="queue-setup" hidden>
+        Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/007_queue_artwork.sql" target="_blank" rel="noopener">SB queue artwork migration</a> to save covers and posters.
+      </p>
       <div id="queue-columns" class="queue-columns"></div>
     </section>
   </main>
@@ -130,6 +133,16 @@
         <button type="button" class="icon-button" id="close-queue-editor" aria-label="Close editor">×</button>
       </div>
       <label>Title<input id="queue-title" maxlength="200" autocomplete="off" required></label>
+      <div class="title-suggestions">
+        <label>Did you mean?<select id="queue-title-options" disabled></select></label>
+        <div class="queue-lookup-actions">
+          <button type="button" id="queue-find-artwork" class="button">Find cover</button>
+          <button type="button" id="queue-match-title" class="button" hidden>Match title</button>
+        </div>
+      </div>
+      <label id="queue-artwork-field" class="queue-field">Cover image URL<input id="queue-artwork-url" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
+      <img id="queue-artwork-preview" class="queue-artwork-preview" alt="Artwork preview" referrerpolicy="no-referrer" hidden>
+      <p id="queue-lookup-status" role="status"></p>
       <label id="queue-author-field" class="queue-field">Author<input id="queue-author" maxlength="200" autocomplete="off"></label>
       <label id="queue-alias-field" class="queue-field">Recommended by
         <input id="queue-alias" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Pokémon name">

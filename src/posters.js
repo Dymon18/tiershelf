@@ -119,7 +119,7 @@ export async function findPoster({ title, type, year, page, initialPages }) {
   return { suggestions }
 }
 
-export async function findBookCover({ title, author, coverRequired = true }) {
+async function searchBooks({ title, author }) {
   if (!title) throw new Error('Enter the book title.')
   const endpoint = new URL('https://openlibrary.org/search.json')
   endpoint.search = new URLSearchParams({ title, fields: 'title,author_name,cover_i,first_publish_year,subject', limit: '10' })
@@ -133,19 +133,44 @@ export async function findBookCover({ title, author, coverRequired = true }) {
   }
   if (!response.ok) throw new Error('Open Library could not be reached. Try again or paste a direct cover image URL.')
 
-  const normalize = (value) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
   const { docs = [] } = await response.json()
-  const result = docs.find((book) => (!coverRequired || book.cover_i) && normalize(book.title) === normalize(title)
-    && (!author || book.author_name?.some((name) => normalize(name) === normalize(author))))
-  if (!result) throw new Error('No matching cover in Open Library. Try a Wikipedia article or a direct cover image URL.')
+  return docs
+}
+
+function bookDetails(result) {
+  const author = result.author_name?.join(', ')
   return {
     title: result.title,
-    description: result.author_name?.join(', '),
+    description: author,
     image: result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false` : undefined,
     year: result.first_publish_year,
     genres: result.subject ?? [],
-    author: result.author_name?.join(', '),
+    author,
   }
+}
+
+export async function findBookCover({ title, author, coverRequired = true }) {
+  const books = await searchBooks({ title, author })
+  const result = books.find((book) => (!coverRequired || book.cover_i) && normalizeTitle(book.title) === normalizeTitle(title)
+    && (!author || book.author_name?.some((name) => normalizeTitle(name) === normalizeTitle(author))))
+  if (!result) throw new Error('No matching cover in Open Library. Try a Wikipedia article or a direct cover image URL.')
+  return bookDetails(result)
+}
+
+export async function findBookOptions({ title, author }) {
+  const books = await searchBooks({ title, author })
+  const unique = new Map()
+  for (const item of books) {
+    if (!item.title) continue
+    const result = bookDetails(item)
+    const key = normalizeTitle(result.title) + '|' + normalizeTitle(result.author ?? '')
+    if (!unique.has(key) || !unique.get(key).image) unique.set(key, result)
+  }
+  const ranked = [...unique.values()]
+  const exact = ranked.filter((item) => normalizeTitle(item.title) === normalizeTitle(title))
+  const suggestions = [...exact, ...ranked.filter((item) => !exact.includes(item))].slice(0, 8)
+  if (!suggestions.length) throw new Error('No matching books found. Try a shorter title or enter the author and cover manually.')
+  return { suggestions, preferred: exact.length === 1 ? exact[0] : null }
 }
 
 export async function findArtworkOptions({ title, type, year, page, author }) {
