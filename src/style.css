@@ -405,6 +405,7 @@ body[data-mode="dymon"][data-view="queue"] .mode-pattern {
 }
 
 .queue-lookup-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+#queue-match-title:disabled { cursor: default; }
 .queue-artwork-preview { display: block; width: 76px; max-height: 114px; margin-top: .55rem; object-fit: contain; border-radius: 4px; }
 .queue-thumbnail { display: block; width: 42px; max-height: 62px; margin: 0 0 .3rem; object-fit: contain; border-radius: 4px; }
 #queue-lookup-status { color: var(--muted); font-size: .875rem; }

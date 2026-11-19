@@ -285,7 +285,7 @@ export function createQueue(db) {
     lookup.disabled = false
     titleOptions.disabled = true
     titleOptions.replaceChildren(new Option('Find a cover or poster to see matches', ''))
-    matchTitle.hidden = true
+    matchTitle.disabled = true
     lookupStatus.textContent = ''
   }
 
@@ -295,7 +295,7 @@ export function createQueue(db) {
 
   function applyArtworkMatch() {
     const result = selectedMatch()
-    matchTitle.hidden = !result || result.title === title.value
+    matchTitle.disabled = !result || result.title === title.value
     if (!result) return
     artwork.value = result.image ?? ''
     renderArtwork()
@@ -353,7 +353,7 @@ export function createQueue(db) {
     const result = selectedMatch()
     if (!result) return
     title.value = result.title
-    matchTitle.hidden = true
+    matchTitle.disabled = true
     title.focus()
   })
   artwork.addEventListener('input', renderArtwork)
