@@ -587,6 +587,13 @@ export function createQueue(db, openTierEditor) {
   dialog.addEventListener('cancel', (event) => { if (pending) event.preventDefault() })
   dialog.addEventListener('close', () => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }) })
   archiveButton.addEventListener('click', () => switchView(false, true))
+  byId('return-to-tiershelf').addEventListener('click', (event) => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    switchView(false, true)
+    byId('title').focus({ preventScroll: true })
+    window.scrollTo(0, 0)
+  })
   queueButton.addEventListener('click', () => {
     if (!owner && !viewer) return
     switchView(true, true)

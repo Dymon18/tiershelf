@@ -12,10 +12,7 @@
   <div class="mode-pattern" aria-hidden="true"></div>
   <header class="topbar">
     <div class="frame nav">
-      <div class="site-links">
-        <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
-        <a class="button home-link" href="https://dymon18.github.io/">Home</a>
-      </div>
+      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
       <div class="account">
         <span id="mode" class="mode">Demo mode</span>
         <button id="recommendation-mailbox" class="button" type="button" hidden>Recommendation mailbox</button>
@@ -32,7 +29,7 @@
     <div id="archive-view">
       <section class="intro" aria-labelledby="title">
         <div>
-          <h1 id="title">MyShelf<span aria-hidden="true">.</span></h1>
+          <h1 id="title" tabindex="-1">MyShelf<span aria-hidden="true">.</span></h1>
           <p>Completed &amp; Rated</p>
           <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
         </div>
@@ -63,7 +60,6 @@
         <div id="board" class="board"></div>
         <p id="status" class="status" role="status"></p>
       </section>
-      <footer><span id="footer-text">Demo edits reset when you refresh or close this tab.</span></footer>
     </div>
     <section id="queue-view" class="queue-view" aria-labelledby="queue-heading" hidden>
       <header class="queue-heading">
@@ -101,6 +97,13 @@
       <div id="queue-columns" class="queue-columns"></div>
     </section>
   </main>
+  <footer class="frame site-footer">
+    <span id="footer-text">Demo edits reset when you refresh or close this tab.</span>
+    <nav class="footer-links" aria-label="Footer links">
+      <a href="https://dymon18.github.io/">Go back to dymon18 home</a>
+      <a id="return-to-tiershelf" href="./">Go back to TierShelf</a>
+    </nav>
+  </footer>
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="entry-form">
       <div class="dialog-heading"><h2 id="editor-title">Add title</h2><button type="button" class="icon-button" id="close-editor" aria-label="Close editor">×</button></div>

@@ -20,8 +20,6 @@ button:disabled { cursor: wait; opacity: .65; }
 .topbar { border-bottom: 1px solid var(--border); background: #17191a; }
 .nav, .account, .intro, .toolbar, .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .nav { min-height: 72px; }
-.site-links { display: flex; align-items: center; gap: .65rem; }
-.home-link { display: inline-flex; align-items: center; text-decoration: none; }
 .brand { text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 10px; font-size: 1.2rem; font-weight: 800; letter-spacing: -.04em; }
 .mode { color: var(--muted); font: 500 .8rem ui-monospace, monospace; white-space: nowrap; }
 .button { min-height: 42px; border-radius: 8px; border: 1px solid #444a4a; background: #242829; color: #f6f5f1; padding: 8px 14px; font-weight: 700; white-space: nowrap; }
@@ -58,7 +56,9 @@ h1 span { color: var(--accent); }
 .empty { align-self: center; color: var(--muted); padding: 0 6px; font-size: .85rem; }
 .status { color: var(--accent); margin: 12px 0; }
 .status:empty, #editor-status:empty { display: none; }
-footer { padding: 20px 0 30px; font-size: .84rem; }
+.site-footer { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .75rem 1.25rem; margin-top: 1rem; padding: 20px 0 30px; border-top: 1px solid var(--border); font-size: .84rem; }
+.footer-links { display: flex; flex-wrap: wrap; gap: .6rem 1rem; }
+.footer-links a { color: var(--accent); text-underline-offset: .2em; }
 dialog { width: min(440px, calc(100% - 36px)); border: 1px solid #484f50; border-radius: 14px; padding: 22px; background: #212526; color: inherit; }
 dialog::backdrop { background: #080909be; }
 .dialog-heading { margin-bottom: 18px; }
