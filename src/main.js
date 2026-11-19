@@ -40,8 +40,11 @@ const newCategory = byId('new-category')
 const yearInput = byId('entry-year')
 const wikiInput = byId('entry-wikipedia')
 const posterInput = byId('entry-poster')
-const posterPreview = byId('poster-preview')
-const posterChoice = byId('select-poster')
+const alternativePoster = byId('alternative-poster')
+const artworkChoices = [
+  { input: posterInput, button: byId('select-poster'), image: byId('poster-preview') },
+  { input: alternativePoster, button: byId('select-alternative'), image: byId('alternative-preview') },
+]
 const autofillButton = byId('autofill-details')
 const autofillStatus = byId('autofill-status')
 const posterStatus = byId('poster-status')
@@ -81,7 +84,7 @@ let archiveColumns = fullColumns
 let selectedCategories = new Set()
 let lookupVersion = 0
 let posterSuggestions = []
-let previewImage = null
+let selectedArtwork = null
 let autofillVersion = 0
 let ownerMode = false
 let editing = null
@@ -343,6 +346,8 @@ function openEditor(entry, defaultGrade = 'A') {
   yearInput.value = entry?.release_year ?? ''
   wikiInput.value = entry?.wikipedia_url ?? ''
   posterInput.value = entry?.poster_url ?? ''
+  alternativePoster.value = ''
+  selectedArtwork = posterInput.value ? posterInput : null
   resetPosterLookup()
   renderTypeFields()
   renderCategoryPicker()
@@ -359,7 +364,8 @@ function renderTypeFields() {
   byId('entry-author-field').hidden = !isBook || (ownerMode && !archiveColumns.includes(',author'))
   byId('artwork-legend').textContent = isBook ? 'Cover' : 'Poster'
   posterButton.textContent = isBook ? 'Find cover' : 'Find poster'
-  byId('entry-poster').parentElement.firstChild.textContent = isBook ? 'Cover image URL ' : 'Poster image URL '
+  posterInput.parentElement.firstChild.textContent = isBook ? 'Cover image URL ' : 'Poster image URL '
+  alternativePoster.parentElement.firstChild.textContent = isBook ? 'Alternative cover URL ' : 'Alternative poster URL '
 }
 
 function renderCategoryPicker() {
@@ -401,21 +407,30 @@ function addCategory() {
   newCategory.focus()
 }
 
-function previewPoster(value = posterInput.value.trim()) {
-  previewImage = httpsUrl(value)?.href ?? null
-  posterChoice.hidden = !previewImage
-  const selected = previewImage !== null && httpsUrl(posterInput.value.trim())?.href === previewImage
-  posterChoice.setAttribute('aria-pressed', String(selected))
-  if (previewImage) posterPreview.src = previewImage
-  else posterPreview.removeAttribute('src')
+function previewPoster() {
+  for (const { input, button, image } of artworkChoices) {
+    const url = httpsUrl(input.value.trim())
+    button.hidden = !url
+    button.setAttribute('aria-pressed', String(Boolean(url) && selectedArtwork === input))
+    if (url && image.getAttribute('src') !== url.href) {
+      image.hidden = false
+      image.src = url.href
+    } else if (!url) image.removeAttribute('src')
+  }
 }
 
-posterChoice.addEventListener('click', () => {
-  if (!previewImage) return
-  posterInput.value = previewImage
-  posterChoice.setAttribute('aria-pressed', 'true')
-  posterStatus.textContent = typeInput.value === 'book' ? 'Cover selected.' : 'Poster selected.'
-})
+for (const { input, button, image } of artworkChoices) {
+  image.referrerPolicy = 'no-referrer'
+  image.addEventListener('error', () => {
+    image.hidden = true
+    posterStatus.textContent = 'An image could not load. Try another direct image URL.'
+  })
+  button.addEventListener('click', () => {
+    selectedArtwork = selectedArtwork === input ? null : input
+    previewPoster()
+    posterStatus.textContent = selectedArtwork ? 'Image selected.' : 'Image unselected.'
+  })
+}
 
 async function save(record) {
   if (pendingChanges) throw new Error('Please wait for the current change to finish.')
@@ -504,11 +519,6 @@ newCategory.addEventListener('keydown', (event) => {
     addCategory()
   }
 })
-posterPreview.referrerPolicy = 'no-referrer'
-posterPreview.addEventListener('error', () => {
-  posterChoice.hidden = true
-  posterStatus.textContent = 'The image could not load. Try another direct image URL.'
-})
 function resetAutofill() {
   autofillVersion++
   autofillButton.disabled = false
@@ -529,10 +539,11 @@ function resetPosterLookup() {
 function usePoster(poster) {
   if (poster.page) wikiInput.value = poster.page
   if (poster.image) {
-    previewPoster(poster.image)
-    posterStatus.textContent = 'Click the image to select it.'
+    posterInput.value = poster.image
+    selectedArtwork = posterInput
+    previewPoster()
+    posterStatus.textContent = 'Image selected. Click it to unselect.'
   } else {
-    previewPoster('')
     posterStatus.textContent = 'This article has no available image. You can paste a direct image URL.'
   }
 }
@@ -546,7 +557,7 @@ function showPosterSuggestions(result) {
     posterOptions.add(new Option(label, String(index)))
   })
   byId('poster-options-field').hidden = false
-  posterStatus.textContent = 'Select a result to preview its image.'
+  posterStatus.textContent = 'Choose a result to select its image.'
 }
 
 posterOptions.addEventListener('change', () => {
@@ -564,9 +575,18 @@ matchTitleButton.addEventListener('click', () => {
   matchTitleButton.hidden = true
   titleInput.focus()
 })
-posterInput.addEventListener('input', () => {
-  resetPosterLookup()
-  previewPoster()
+for (const { input } of artworkChoices) {
+  input.addEventListener('input', () => {
+    posterStatus.textContent = ''
+    if (input === posterInput && !selectedArtwork && httpsUrl(input.value.trim())) selectedArtwork = input
+    if (selectedArtwork === input && !input.value.trim()) selectedArtwork = null
+    previewPoster()
+  })
+}
+titleInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return
+  event.preventDefault()
+  if (!byId('entry-artwork').hidden) posterButton.click()
 })
 for (const input of [titleInput, authorInput, yearInput, wikiInput]) {
   input.addEventListener('input', resetPosterLookup)
@@ -654,8 +674,9 @@ autofillButton.addEventListener('click', async () => {
       filled.push(type === 'book' ? 'genres' : 'categories')
     }
     if (!wikiInput.value && details.page) wikiInput.value = details.page
-    if (!previewImage && details.image) {
-      previewPoster(details.image)
+    if (!posterInput.value.trim() && details.image) {
+      posterInput.value = details.image
+      previewPoster()
       posterStatus.textContent = 'Click the image to select it.'
     }
     autofillStatus.textContent = filled.length
@@ -686,7 +707,7 @@ byId('entry-form').addEventListener('submit', (event) => {
   if (!ownerMode || archiveDetails) {
     if (newCategory.value.trim()) addCategory()
     const page = wikiInput.value.trim()
-    const image = posterInput.value.trim()
+    const image = selectedArtwork?.value.trim() ?? ''
     if (page && !wikipediaTitle(page)) {
       editorStatus.textContent = 'Enter an English Wikipedia article URL.'
       wikiInput.focus()
@@ -694,7 +715,7 @@ byId('entry-form').addEventListener('submit', (event) => {
     }
     if (image && !httpsUrl(image)) {
       editorStatus.textContent = 'Enter a direct HTTPS image URL.'
-      posterInput.focus()
+      selectedArtwork.focus()
       return
     }
     if (selectedCategories.size > 30) {

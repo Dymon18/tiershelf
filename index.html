@@ -64,9 +64,17 @@
         <label id="poster-options-field" hidden><span id="poster-options-label">Did you mean?</span><select id="poster-options"></select></label>
         <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
         <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
-        <button id="select-poster" class="poster-choice" type="button" aria-label="Use this image" aria-pressed="false" hidden>
-          <img id="poster-preview" alt="Poster preview">
-        </button>
+        <label>Alternative poster URL <input id="alternative-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
+        <div class="poster-choices">
+          <button id="select-poster" class="poster-choice" type="button" aria-pressed="false" hidden>
+            <img id="poster-preview" alt="">
+            <span>Primary</span>
+          </button>
+          <button id="select-alternative" class="poster-choice" type="button" aria-pressed="false" hidden>
+            <img id="alternative-preview" alt="">
+            <span>Alternative</span>
+          </button>
+        </div>
         <p id="poster-status" role="status"></p>
       </fieldset>
       <fieldset id="entry-details">
