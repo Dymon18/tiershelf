@@ -83,3 +83,38 @@ form select { appearance: none; padding-right: 32px; background-image: linear-gr
 .brand-mark i { height: 2px; border-radius: 2px; background: #161a12; }
 .brand-mark i:nth-child(2) { width: 75%; }
 .brand-mark i:nth-child(3) { width: 50%; }
+
+.intro {
+  align-items: center;
+}
+
+.intro .primary {
+  margin-top: 20px;
+}
+
+.cookie-banner {
+  width: clamp(175px, 22vw, 240px);
+  margin: 0;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1a1a1a;
+}
+
+.cookie-banner img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 600px) {
+  .intro {
+    align-items: flex-start;
+  }
+
+  .cookie-banner {
+    width: min(100%, 240px);
+    align-self: center;
+  }
+}
