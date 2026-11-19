@@ -1,4 +1,5 @@
-import { ditto, pokemonId, pokemonName, pokemonSprite, populatePokemonOptions } from './pokemon.js'
+import { createPokemonPicker, ditto, extraPokemonColumn, pokemonName, pokemonSprite,
+  populatePokemonOptions, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findBookOptions, httpsUrl } from './posters.js'
 
 const mediaTypes = [
@@ -50,6 +51,7 @@ export function createQueue(db, openTierEditor) {
   const lookupStatus = byId('queue-lookup-status')
   const alias = byId('queue-alias')
   const preview = byId('queue-alias-preview')
+  const picker = createPokemonPicker(alias, preview, byId('queue-add-pokemon'))
   const formStatus = byId('queue-editor-status')
   const save = byId('queue-save')
   const remove = byId('queue-delete')
@@ -78,7 +80,7 @@ export function createQueue(db, openTierEditor) {
   let lookupVersion = 0
   let matches = []
   let autofilledAuthor = ''
-  let columns = standardColumns + readingColumns
+  let columns = standardColumns + readingColumns + extraPokemonColumn
   let owner = false
   let viewer = false
   let version = 0
@@ -199,12 +201,14 @@ export function createQueue(db, openTierEditor) {
         card.append(text)
         if (!compact) {
           if (type === 'book' && entry.author) text.append(cell('span', entry.author))
-          const name = pokemonName(entry.pokemon_id) || 'Pokémon'
-          const badge = cell('span', source.key === 'self' ? '' : name)
-          badge.className = 'queue-pokemon-name'
-          badge.prepend(pokemonSprite(entry.pokemon_id))
-          if (source.key === 'self') badge.firstChild.alt = 'Ditto'
-          text.append(badge)
+          const aliases = recommenderIds(entry.pokemon_id, entry.extra_pokemon_ids)
+          for (const id of aliases) {
+            const badge = cell('span', source.key === 'self' ? '' : pokemonName(id))
+            badge.className = 'queue-pokemon-name'
+            badge.prepend(pokemonSprite(id))
+            if (source.key === 'self') badge.firstChild.alt = 'Ditto'
+            text.append(badge)
+          }
           const names = (entry.reading_tags ?? []).map((id) => readingTags.get(id)).filter(Boolean)
           if (names.length) {
             const tags = document.createElement('ul')
@@ -356,8 +360,9 @@ export function createQueue(db, openTierEditor) {
         if (session !== version) return
         if (offset === 0) {
           for (const fallback of [
-            standardColumns, artworkColumns + readingColumns, basicColumns + priorityColumn + readingColumns,
-            basicColumns + readingColumns, artworkColumns, basicColumns + priorityColumn, basicColumns,
+            standardColumns + readingColumns, standardColumns, artworkColumns + readingColumns,
+            basicColumns + priorityColumn + readingColumns, basicColumns + readingColumns, artworkColumns,
+            basicColumns + priorityColumn, basicColumns,
           ]) {
             if (!['42703', 'PGRST204'].includes(result.error?.code)) break
             columns = fallback
@@ -386,13 +391,6 @@ export function createQueue(db, openTierEditor) {
     }
   }
 
-  function updateAlias() {
-    alias.setCustomValidity('')
-    preview.replaceChildren()
-    const id = activeEntry?.source === 'self' ? ditto : pokemonId(alias.value)
-    if (id) preview.append(pokemonSprite(id), activeEntry?.source === 'self' ? 'Ditto · BackLog' : pokemonName(id))
-  }
-
   function openEditor(entry, button) {
     if (!owner || !loaded || pending) return
     activeEntry = entry
@@ -413,14 +411,12 @@ export function createQueue(db, openTierEditor) {
     byId('queue-artwork-field').firstChild.textContent = book ? 'Cover image URL' : 'Poster image URL'
     const self = entry.source === 'self'
     byId('queue-alias-field').hidden = self
-    alias.disabled = self
-    alias.required = !self
-    alias.value = self ? '' : pokemonName(entry.pokemon_id)
+    picker.reset(recommenderIds(entry.pokemon_id, entry.extra_pokemon_ids), columns.includes(extraPokemonColumn), self)
+    if (self) preview.append(pokemonSprite(ditto), 'Ditto · BackLog')
     remove.hidden = !entry.id
     byId('queue-editor-heading').textContent = entry.id ? 'Edit QuestLog entry'
       : self ? 'Add to BackLog' : 'Add to SideQuest'
     formStatus.textContent = ''
-    updateAlias()
     dialog.showModal()
     title.focus()
     return true
@@ -556,7 +552,6 @@ export function createQueue(db, openTierEditor) {
   }
 
   populatePokemonOptions(byId('pokemon-aliases'))
-  alias.addEventListener('input', updateAlias)
   form.addEventListener('submit', (event) => {
     event.preventDefault()
     if (!activeEntry) return
@@ -566,12 +561,8 @@ export function createQueue(db, openTierEditor) {
       title.focus()
       return
     }
-    const aliasId = activeEntry.source === 'self' ? ditto : pokemonId(alias.value)
-    if (!aliasId) {
-      alias.setCustomValidity('Choose a Pokémon alias from the list.')
-      alias.reportValidity()
-      return
-    }
+    const aliasIds = activeEntry.source === 'self' ? [ditto] : picker.read(true)
+    if (!aliasIds) return
     const image = artwork.value.trim()
     if (image && !httpsUrl(image)) {
       formStatus.textContent = 'Enter a direct HTTPS image URL.'
@@ -580,6 +571,7 @@ export function createQueue(db, openTierEditor) {
     }
     persist(false, {
       ...(columns.includes(',artwork_url') ? { artwork_url: image || null } : {}),
+      ...(columns.includes(extraPokemonColumn) ? { extra_pokemon_ids: aliasIds.slice(1) } : {}),
       ...(readingTagField.disabled ? {} : {
         reading_tags: [...readingInputs].filter(([, input]) => input.checked).map(([id]) => id),
       }),
@@ -587,7 +579,7 @@ export function createQueue(db, openTierEditor) {
         source_recommendation_id: activeEntry.source_recommendation_id,
       }),
       title: name, author: activeEntry.media_type === 'book' ? author.value.trim() || null : null,
-      media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: aliasId,
+      media_type: activeEntry.media_type, source: activeEntry.source, pokemon_id: aliasIds[0],
     })
   })
   remove.addEventListener('click', () => persist(true))
@@ -653,7 +645,7 @@ export function createQueue(db, openTierEditor) {
       pending = false
       activeEntry = null
       trigger = null
-      columns = standardColumns + readingColumns
+      columns = standardColumns + readingColumns + extraPokemonColumn
       dragging = null
       byId('queue-priority-setup').hidden = true
       resetArtworkLookup()

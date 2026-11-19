@@ -148,7 +148,7 @@ h1 { letter-spacing: -.025em; }
 }
 
 .poster-card img { pointer-events: none; display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
-.card.poster-card strong, .card.poster-card span {
+.card.poster-card > strong, .card.poster-card > span:not(.entry-recommender-sprites) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -400,6 +400,13 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 .queue-pokemon-name img, .queue-alias-preview img { flex: none; image-rendering: pixelated; }
 .queue-field, .queue-alias-preview:not(:empty) { margin-top: .8rem; }
 .queue-alias-preview { color: var(--muted); }
+.pokemon-picker { display: flex; gap: .4rem; align-items: start; margin-top: 6px; }
+.pokemon-picker input { min-width: 0; }
+.pokemon-picker .button { flex: none; }
+.pokemon-chip { display: inline-flex; align-items: center; gap: .25rem; border: 1px solid var(--border); border-radius: 999px; padding: 0 .45rem; }
+.pokemon-chip img { width: 30px; height: 30px; }
+.pokemon-chip .icon-button { min-width: 28px; min-height: 30px; font-size: 1rem; }
+.pokemon-preview { border-style: dashed; }
 #queue-editor-status { color: #ffc3ba; }
 #queue-status:empty, #queue-editor-status:empty { display: none; }
 .queue-setup a { color: var(--accent); }
@@ -444,17 +451,27 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 }
 
 .card.has-recommender { position: relative; }
-.card.has-recommender:not(.poster-card) { padding-right: 32px; }
-.card .entry-recommender-sprite {
+.card .entry-recommender-sprites {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 6px;
+  background: #151718d9;
+}
+.poster-card .entry-recommender-sprites {
   position: absolute;
   right: 2px;
   bottom: 2px;
+}
+.card .entry-recommender-sprites img {
   width: 27px;
+  min-width: 0;
   height: 27px;
-  border-radius: 6px;
-  background: #151718d9;
+  object-fit: contain;
   image-rendering: pixelated;
 }
+.card .entry-recommender-sprites span { margin: 0 .25rem 0 0; }
 
 .visually-hidden {
   position: absolute;

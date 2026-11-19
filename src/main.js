@@ -4,7 +4,7 @@ import { config } from './config.js'
 import { createQueue } from './queue.js'
 import { createViewer } from './viewer.js'
 import { createMailbox } from './mailbox.js'
-import { pokemonId, pokemonName, pokemonSprite } from './pokemon.js'
+import { createPokemonPicker, extraPokemonColumn, pokemonName, pokemonSprite, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
@@ -38,6 +38,7 @@ const queue = createQueue(db, (entry) => openEditor({
   title: entry.title, media_type: entry.media_type, author: entry.author,
   poster_url: entry.artwork_url, source_queue_id: entry.id,
   recommender_pokemon_id: entry.source === 'recommended' ? entry.pokemon_id : null,
+  extra_pokemon_ids: entry.source === 'recommended' ? entry.extra_pokemon_ids : [],
 }))
 
 const byId = (id) => document.getElementById(id)
@@ -49,7 +50,9 @@ const accountButton = byId('account-button')
 const githubButton = byId('github-login')
 const titleInput = byId('entry-title')
 const authorInput = byId('entry-author')
-const recommenderInput = byId('entry-recommender')
+const recommenderPicker = createPokemonPicker(
+  byId('entry-recommender'), byId('entry-recommender-preview'), byId('entry-add-pokemon'),
+)
 const gradeInput = byId('entry-grade')
 const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
@@ -422,14 +425,22 @@ function createCard(entry) {
     card.prepend(image)
     image.src = poster.href
   }
-  const recommender = pokemonName(entry.recommender_pokemon_id)
-  if (recommender) {
-    const icon = pokemonSprite(entry.recommender_pokemon_id)
-    icon.className = 'entry-recommender-sprite'
-    card.append(icon)
+  const recommenders = recommenderIds(entry.recommender_pokemon_id, entry.extra_pokemon_ids)
+  if (recommenders.length) {
+    const icons = document.createElement('span')
+    icons.className = 'entry-recommender-sprites'
+    icons.setAttribute('aria-hidden', 'true')
+    icons.append(...recommenders.slice(0, 3).map(pokemonSprite))
+    if (recommenders.length > 3) {
+      const more = document.createElement('span')
+      more.textContent = '+' + (recommenders.length - 3)
+      icons.append(more)
+    }
+    card.append(icons)
     card.classList.add('has-recommender')
-    card.title += ` · Recommended by ${recommender}`
-    card.setAttribute('aria-label', `${entry.title}, recommended by ${recommender}`)
+    const names = recommenders.map(pokemonName).join(', ')
+    card.title += ` · Recommended by ${names}`
+    card.setAttribute('aria-label', `${entry.title}, recommended by ${names}`)
   }
   card.addEventListener('click', () => openEditor(entry))
   card.addEventListener('dragstart', (event) => {
@@ -468,9 +479,8 @@ function openEditor(entry, defaultGrade = 'A') {
   authorInput.value = entry?.author ?? ''
   const recommendField = byId('entry-recommender-field')
   recommendField.hidden = ownerMode && !archiveColumns.includes(promotionColumns)
-  recommenderInput.disabled = recommendField.hidden
-  recommenderInput.value = recommendField.hidden ? '' : pokemonName(entry?.recommender_pokemon_id)
-  renderRecommender()
+  recommenderPicker.reset(recommenderIds(entry?.recommender_pokemon_id, entry?.extra_pokemon_ids),
+    !ownerMode || archiveColumns.includes(extraPokemonColumn), recommendField.hidden)
   for (const [key, input] of Object.entries(movieInputs)) {
     const value = entry?.movie_details?.[key]
     input.value = key === 'runtime' ? value ?? '' : (Array.isArray(value) ? value.join(', ') : '')
@@ -495,14 +505,6 @@ function openEditor(entry, defaultGrade = 'A') {
   editor.showModal()
   titleInput.focus()
 }
-
-function renderRecommender() {
-  const preview = byId('entry-recommender-preview')
-  preview.replaceChildren()
-  const id = pokemonId(recommenderInput.value)
-  if (id && !recommenderInput.disabled) preview.append(pokemonSprite(id), pokemonName(id))
-}
-recommenderInput.addEventListener('input', renderRecommender)
 
 function renderTypeFields() {
   const isBook = typeInput.value === 'book'
@@ -899,15 +901,11 @@ byId('entry-form').addEventListener('submit', (event) => {
     return
   }
   const record = { id: editing?.id, title, media_type: typeInput.value, grade: gradeInput.value }
-  if (!recommenderInput.disabled) {
-    const alias = recommenderInput.value.trim()
-    const id = pokemonId(alias)
-    if (alias && !id) {
-      editorStatus.textContent = 'Choose a Pokémon alias for Recommended by.'
-      recommenderInput.focus()
-      return
-    }
-    record.recommender_pokemon_id = id ?? null
+  if (!byId('entry-recommender-field').hidden) {
+    const ids = recommenderPicker.read()
+    if (!ids) return
+    record.recommender_pokemon_id = ids[0] ?? null
+    if (!ownerMode || archiveColumns.includes(extraPokemonColumn)) record.extra_pokemon_ids = ids.slice(1)
   }
   if (!editing?.id && editing?.source_queue_id) record.source_queue_id = editing.source_queue_id
   if (!ownerMode || archiveDetails) {
@@ -1044,9 +1042,13 @@ if (db) {
       }
       const loadEntries = (columns) => db.from('tiershelf_entries')
         .select(columns).order('created_at').order('id')
-      let columns = rankedColumns + movieColumn + promotionColumns
+      let columns = rankedColumns + movieColumn + promotionColumns + extraPokemonColumn
       let result = await loadEntries(columns)
       const missingColumn = () => ['42703', 'PGRST204'].includes(result.error?.code)
+      if (missingColumn()) {
+        columns = rankedColumns + movieColumn + promotionColumns
+        result = await loadEntries(columns)
+      }
       if (missingColumn()) {
         columns = rankedColumns + movieColumn
         result = await loadEntries(columns)
@@ -1072,11 +1074,16 @@ if (db) {
         result = await loadEntries(columns)
       }
       if (!result.error && !columns.includes(promotionColumns)) {
-        const extras = await loadEntries('id' + promotionColumns)
+        let addedColumns = promotionColumns + extraPokemonColumn
+        let extras = await loadEntries('id' + addedColumns)
+        if (['42703', 'PGRST204'].includes(extras.error?.code)) {
+          addedColumns = promotionColumns
+          extras = await loadEntries('id' + addedColumns)
+        }
         if (!extras.error) {
           const byEntry = new Map(extras.data.map((entry) => [entry.id, entry]))
           result.data = result.data.map((entry) => ({ ...entry, ...byEntry.get(entry.id) }))
-          columns += promotionColumns
+          columns += addedColumns
         }
       }
       const { data, error } = result

@@ -1,5 +1,5 @@
 import { httpsUrl } from './posters.js'
-import { pokemonName } from './pokemon.js'
+import { pokemonName, recommenderIds } from './pokemon.js'
 
 const byId = (id) => document.getElementById(id)
 const validLength = (key) => {
@@ -191,7 +191,8 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
       const movie = entry.movie_details
       for (const [label, value] of [
         ['Tier', entry.grade], ['Author', entry.author], ['Release year', entry.release_year],
-        ['Categories', entry.categories?.join(', ')], ['Recommended by', pokemonName(entry.recommender_pokemon_id)],
+        ['Categories', entry.categories?.join(', ')],
+        ['Recommended by', recommenderIds(entry.recommender_pokemon_id, entry.extra_pokemon_ids).map(pokemonName).join(', ')],
         ['Director', movie?.directors?.join(', ')], ['Studio', movie?.studios?.join(', ')],
         ['Franchise', movie?.franchises?.join(', ')], ['Original language', movie?.languages?.join(', ')],
         ['Country of origin', movie?.countries?.join(', ')], ['Runtime', movie?.runtime ? `${movie.runtime} min` : null],

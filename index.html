@@ -147,8 +147,14 @@
           </div>
         </fieldset>
       </fieldset>
-      <label id="entry-recommender-field" class="queue-field">Recommended by <input id="entry-recommender" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Optional Pokémon alias"></label>
-      <div id="entry-recommender-preview" class="queue-alias-preview"></div>
+      <div id="entry-recommender-field" class="queue-field">
+        <label for="entry-recommender">Recommended by</label>
+        <div class="pokemon-picker">
+          <input id="entry-recommender" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Optional Pokémon alias">
+          <button id="entry-add-pokemon" class="button" type="button" hidden>Add Pokémon</button>
+        </div>
+        <div id="entry-recommender-preview" class="queue-alias-preview"></div>
+      </div>
       <p id="editor-status" role="status"></p>
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
     </form>
@@ -174,9 +180,13 @@
       <fieldset id="queue-reading-tags" class="queue-reading-tags" hidden>
         <legend>Reading tags</legend>
       </fieldset>
-      <label id="queue-alias-field" class="queue-field">Recommended by
-        <input id="queue-alias" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Pokémon name">
-      </label>
+      <div id="queue-alias-field" class="queue-field">
+        <label for="queue-alias">Recommended by</label>
+        <div class="pokemon-picker">
+          <input id="queue-alias" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Pokémon name">
+          <button id="queue-add-pokemon" class="button" type="button" hidden>Add Pokémon</button>
+        </div>
+      </div>
       <datalist id="pokemon-aliases"></datalist>
       <div id="queue-alias-preview" class="queue-alias-preview"></div>
       <p id="queue-editor-status" role="status"></p>
