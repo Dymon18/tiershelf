@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
-import { findBookCover, findPoster, httpsUrl, wikipediaTitle } from './posters.js'
+import { findBookCover, findPoster, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
@@ -40,6 +40,7 @@ const posterInput = byId('entry-poster')
 const posterPreview = byId('poster-preview')
 const posterStatus = byId('poster-status')
 const posterButton = byId('find-poster')
+const posterOptions = byId('poster-options')
 const editorStatus = byId('editor-status')
 const saveButton = byId('save-button')
 const deleteButton = byId('delete-button')
@@ -65,6 +66,7 @@ let archiveDetails = true
 let archiveColumns = fullColumns
 let selectedCategories = new Set()
 let lookupVersion = 0
+let posterSuggestions = []
 let ownerMode = false
 let editing = null
 let dragging = null
@@ -101,11 +103,11 @@ function renderCategoryFilter() {
 
 function render() {
   renderCategoryFilter()
-  const query = search.value.trim().toLowerCase()
+  const query = normalizeTitle(search.value)
   const shelf = entries.filter((entry) => entry.media_type === filter)
   const visible = shelf.filter((entry) =>
     (!category || entry.categories?.some((name) => name.toLowerCase() === category)) &&
-    (entry.title.toLowerCase().includes(query) || entry.author?.toLowerCase().includes(query)),
+    (normalizeTitle(entry.title).includes(query) || normalizeTitle(entry.author ?? '').includes(query)),
   )
   byId('count').textContent = visible.length === shelf.length
     ? `${shelf.length} ${shelf.length === 1 ? 'title' : 'titles'}`
@@ -136,6 +138,13 @@ function render() {
       empty.textContent = query || category ? 'No matching titles' : 'No titles yet'
       cards.append(empty)
     }
+
+    const add = document.createElement('button')
+    add.type = 'button'
+    add.className = 'add-tier'
+    add.textContent = `+ Add New ${grade} Tier`
+    add.addEventListener('click', () => openEditor(null, grade))
+    cards.append(add)
 
     row.addEventListener('dragover', (event) => {
       if (!dragging || dragging.grade === grade) return
@@ -204,7 +213,7 @@ function createCard(entry) {
   return card
 }
 
-function openEditor(entry) {
+function openEditor(entry, defaultGrade = 'A') {
   editing = entry ?? null
   byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
@@ -216,13 +225,11 @@ function openEditor(entry) {
   yearInput.value = entry?.release_year ?? ''
   wikiInput.value = entry?.wikipedia_url ?? ''
   posterInput.value = entry?.poster_url ?? ''
-  lookupVersion++
-  posterButton.disabled = false
-  posterStatus.textContent = ''
+  resetPosterLookup()
   renderTypeFields()
   renderCategoryPicker()
   previewPoster()
-  gradeInput.value = entry?.grade ?? 'A'
+  gradeInput.value = entry?.grade ?? defaultGrade
   deleteButton.hidden = !entry
   editorStatus.textContent = ''
   editor.showModal()
@@ -358,9 +365,7 @@ async function submitEditor(action, focusId) {
 typeInput.addEventListener('change', () => {
   selectedCategories = new Set(typeInput.value === editing?.media_type ? editing.categories ?? [] : [])
   newCategory.value = ''
-  lookupVersion++
-  posterButton.disabled = false
-  posterStatus.textContent = ''
+  resetPosterLookup()
   renderTypeFields()
   renderCategoryPicker()
 })
@@ -376,14 +381,60 @@ posterPreview.addEventListener('error', () => {
   posterPreview.hidden = true
   posterStatus.textContent = 'The image could not load. Try another direct image URL.'
 })
-posterInput.addEventListener('input', () => {
+function resetPosterLookup() {
   lookupVersion++
   posterButton.disabled = false
   posterStatus.textContent = ''
+  posterSuggestions = []
+  byId('poster-options-field').hidden = true
+  posterOptions.replaceChildren()
+}
+
+function usePoster(poster, useSuggestedTitle = false) {
+  if (poster.page) wikiInput.value = poster.page
+  if (useSuggestedTitle) titleInput.value = poster.title
+  if (poster.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
+    authorInput.value = poster.author.slice(0, 200)
+  }
+  if (poster.image) {
+    posterInput.value = poster.image
+    posterStatus.textContent = typeInput.value === 'book' ? 'Cover found. Save the title to use it.' : 'Poster found. Save the title to use it.'
+    previewPoster()
+  } else {
+    if (useSuggestedTitle) {
+      posterInput.value = ''
+      previewPoster()
+    }
+    posterStatus.textContent = 'This article has no available image. You can paste a direct image URL.'
+  }
+}
+
+function showPosterSuggestions(result) {
+  posterSuggestions = result.suggestions
+  byId('poster-options-label').textContent = result.ambiguous ? 'Choose a match' : 'Did you mean?'
+  posterOptions.replaceChildren(new Option('Select a Wikipedia title', ''))
+  posterSuggestions.forEach((entry, index) => {
+    const label = entry.description ? `${entry.title} — ${entry.description}` : entry.title
+    posterOptions.add(new Option(label, String(index)))
+  })
+  byId('poster-options-field').hidden = false
+  posterStatus.textContent = 'Select a result to use its title and image.'
+}
+
+posterOptions.addEventListener('change', () => {
+  if (posterOptions.value !== '') usePoster(posterSuggestions[Number(posterOptions.value)], true)
+})
+posterInput.addEventListener('input', () => {
+  resetPosterLookup()
   previewPoster()
 })
+for (const input of [titleInput, authorInput, yearInput, wikiInput]) {
+  input.addEventListener('input', resetPosterLookup)
+}
+
 posterButton.addEventListener('click', async () => {
-  const version = ++lookupVersion
+  resetPosterLookup()
+  const version = lookupVersion
   posterButton.disabled = true
   const page = wikiInput.value.trim()
   const isBook = typeInput.value === 'book'
@@ -394,13 +445,8 @@ posterButton.addEventListener('click', async () => {
       ? await findBookCover({ title, author: authorInput.value.trim() })
       : await findPoster({ title, type: typeInput.value, year: yearInput.value, page })
     if (version !== lookupVersion || !editor.open) return
-    if (poster.page) wikiInput.value = poster.page
-    if (poster.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
-      authorInput.value = poster.author.slice(0, 200)
-    }
-    posterInput.value = poster.image
-    posterStatus.textContent = isBook ? 'Cover found. Save the title to use it.' : 'Poster found. Save the title to use it.'
-    previewPoster()
+    if (poster.suggestions) showPosterSuggestions(poster)
+    else usePoster(poster)
   } catch (error) {
     if (version === lookupVersion && editor.open) posterStatus.textContent = error.message
   } finally {

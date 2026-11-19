@@ -147,7 +147,7 @@ h1 { letter-spacing: -.025em; }
   flex: none;
 }
 
-.poster-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.poster-card img { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .card.poster-card strong, .card.poster-card span {
   position: absolute;
   width: 1px;
@@ -168,3 +168,21 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 #poster-preview { display: block; width: 76px; max-height: 114px; object-fit: contain; border-radius: 4px; }
 #poster-status { color: var(--muted); font-size: .875rem; margin-bottom: 0; }
 #poster-status:empty { display: none; }
+
+.add-tier {
+  min-height: 60px;
+  max-width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 2px dotted #666d6f;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.add-tier:hover, .add-tier:focus-visible {
+  border-color: var(--grade);
+  color: var(--grade);
+}
