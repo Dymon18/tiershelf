@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
-import { findBookCover, findEntryDetails, findPoster, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
+import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
@@ -633,8 +633,8 @@ function resetPosterLookup() {
   posterButton.disabled = false
   posterStatus.textContent = ''
   posterSuggestions = []
-  byId('poster-options-field').hidden = true
-  posterOptions.replaceChildren()
+  posterOptions.disabled = true
+  posterOptions.replaceChildren(new Option('Find a poster or cover to see matches', ''))
   matchTitleButton.hidden = true
 }
 
@@ -646,29 +646,35 @@ function usePoster(poster) {
     previewPoster()
     posterStatus.textContent = 'Image selected. Click it to unselect.'
   } else {
+    if (selectedArtwork === posterInput) selectedArtwork = null
+    posterInput.value = ''
+    previewPoster()
     posterStatus.textContent = 'This article has no available image. You can paste a direct image URL.'
   }
 }
 
 function showPosterSuggestions(result) {
   posterSuggestions = result.suggestions
-  byId('poster-options-label').textContent = result.ambiguous ? 'Choose a match' : 'Did you mean?'
-  posterOptions.replaceChildren(new Option('Select a Wikipedia title', ''))
+  posterOptions.disabled = false
+  posterOptions.replaceChildren(new Option('Choose a result', ''))
   posterSuggestions.forEach((entry, index) => {
     const label = entry.description ? `${entry.title} — ${entry.description}` : entry.title
     posterOptions.add(new Option(label, String(index)))
   })
-  byId('poster-options-field').hidden = false
-  posterStatus.textContent = 'Choose a result to select its image.'
+  if (result.preferred) {
+    posterOptions.value = String(posterSuggestions.indexOf(result.preferred))
+    applyPosterSuggestion()
+  } else posterStatus.textContent = 'Choose a result under Title to see its image.'
 }
 
-posterOptions.addEventListener('change', () => {
+function applyPosterSuggestion() {
   const selected = posterOptions.selectedIndex > 0 ? posterSuggestions[Number(posterOptions.value)] : null
   resetAutofill()
   matchTitleButton.hidden = !selected || selected.title === titleInput.value
   if (selected) usePoster(selected)
   else previewPoster()
-})
+}
+posterOptions.addEventListener('change', applyPosterSuggestion)
 matchTitleButton.addEventListener('click', () => {
   const selected = posterSuggestions[Number(posterOptions.value)]
   if (!selected || posterOptions.selectedIndex < 1) return
@@ -700,18 +706,19 @@ posterButton.addEventListener('click', async () => {
   const version = lookupVersion
   posterButton.disabled = true
   const page = wikiInput.value.trim()
-  const isBook = typeInput.value === 'book'
-  posterStatus.textContent = isBook ? 'Looking for a cover…' : 'Looking for a poster…'
+  const type = typeInput.value
+  posterOptions.options[0].textContent = 'Looking for matches…'
+  posterStatus.textContent = type === 'book' ? 'Looking for a cover…' : 'Looking for a poster…'
   try {
-    const title = titleInput.value.trim()
-    const poster = isBook && !page
-      ? await findBookCover({ title, author: authorInput.value.trim() })
-      : await findPoster({ title, type: typeInput.value, year: yearInput.value, page })
+    const result = await findArtworkOptions({ title: titleInput.value.trim(), type, year: yearInput.value,
+      page, author: authorInput.value.trim() })
     if (version !== lookupVersion || !editor.open) return
-    if (poster.suggestions) showPosterSuggestions(poster)
-    else usePoster(poster)
+    showPosterSuggestions(result)
   } catch (error) {
-    if (version === lookupVersion && editor.open) posterStatus.textContent = error.message
+    if (version === lookupVersion && editor.open) {
+      posterOptions.options[0].textContent = 'No matches available'
+      posterStatus.textContent = error.message
+    }
   } finally {
     if (version === lookupVersion) posterButton.disabled = false
   }

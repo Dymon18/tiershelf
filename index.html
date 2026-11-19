@@ -55,6 +55,10 @@
     <form id="entry-form">
       <div class="dialog-heading"><h2 id="editor-title">Add title</h2><button type="button" class="icon-button" id="close-editor" aria-label="Close editor">×</button></div>
       <label>Title<input id="entry-title" maxlength="200" required autocomplete="off"></label>
+      <div class="title-suggestions">
+        <label>Did you mean?<select id="poster-options" disabled><option value="">Find a poster or cover to see matches</option></select></label>
+        <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
+      </div>
       <div class="fields">
         <label>Type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Series</option></select></label>
         <label>Tier<select id="entry-grade"></select></label>
@@ -63,8 +67,6 @@
         <legend id="artwork-legend">Poster</legend>
         <label>Wikipedia page <input id="entry-wikipedia" type="url" maxlength="2000" placeholder="Optional — look up by title"></label>
         <button id="find-poster" type="button" class="button">Find poster</button>
-        <label id="poster-options-field" hidden><span id="poster-options-label">Did you mean?</span><select id="poster-options"></select></label>
-        <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
         <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
         <label>Alternative poster URL <input id="alternative-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
         <div class="poster-choices">

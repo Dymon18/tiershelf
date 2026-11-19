@@ -244,3 +244,8 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 
 .setup-note { margin: 0 0 .75rem; color: var(--muted); font-size: .875rem; }
 .setup-note a { color: var(--accent); }
+
+.title-suggestions { margin-top: .7rem; }
+.title-suggestions label { min-width: 0; }
+.title-suggestions select { text-overflow: ellipsis; }
+.title-suggestions .button { margin-top: .5rem; }

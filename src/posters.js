@@ -34,6 +34,7 @@ async function wikipediaPages(parameters) {
   })
   try {
     const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) })
+    if (response.status === 429) return Promise.reject(new Error('Wikipedia is busy. Try again in a moment or paste a direct image URL.'))
     if (!response.ok) throw new Error()
     const payload = await response.json()
     if (payload.error) throw new Error()
@@ -54,7 +55,28 @@ function article(item) {
   }
 }
 
-export async function findPoster({ title, type, year, page }) {
+function mediaQualifier(item, type) {
+  return mediaDescriptions[type].test(item.title.match(/\(([^()]*)\)$/)?.[1] ?? '')
+}
+
+function baseTitle(item) {
+  return normalizeTitle(item.title.replace(/\s*\([^()]*\)$/, ''))
+}
+
+function exactArticles(pages, cleaned, type) {
+  return pages.filter((item) =>
+    (normalizeTitle(item.title) === cleaned && (item.thumbnail?.source || mediaDescriptions[type].test(item.description ?? ''))) ||
+    (baseTitle(item) === cleaned && mediaQualifier(item, type)))
+}
+
+function preferredArticle(exact, year) {
+  const yearMatches = year ? exact.filter((item) =>
+    normalizeTitle(item.title + ' ' + (item.description ?? '')).split(' ').includes(year)) : []
+  if (yearMatches.length === 1 && yearMatches[0].thumbnail?.source) return yearMatches[0]
+  return exact.length === 1 && exact[0].thumbnail?.source ? exact[0] : null
+}
+
+export async function findPoster({ title, type, year, page, initialPages }) {
   const pageTitle = wikipediaTitle(page)
   if (page && !pageTitle) throw new Error('Enter an English Wikipedia article URL.')
   if (pageTitle) {
@@ -69,17 +91,11 @@ export async function findPoster({ title, type, year, page }) {
     generator: 'search', gsrsearch: query, gsrnamespace: '0', gsrlimit: '15',
   })
   const qualifier = qualifiers[type]
-  const hasMediaQualifier = (item) => mediaDescriptions[type].test(item.title.match(/\(([^()]*)\)$/)?.[1] ?? '')
-  const descriptive = (item) => mediaDescriptions[type].test(item.description ?? '') || hasMediaQualifier(item)
-  const baseTitle = (item) => normalizeTitle(item.title.replace(/\s*\([^()]*\)$/, ''))
-  const strict = await search(`intitle:"${cleaned}" ${qualifier} ${year}`.trim())
-  const exact = strict.filter((item) =>
-    (normalizeTitle(item.title) === cleaned && (item.thumbnail?.source || descriptive(item))) ||
-    (baseTitle(item) === cleaned && hasMediaQualifier(item)))
-  const yearMatches = year ? exact.filter((item) =>
-    normalizeTitle(item.title + ' ' + (item.description ?? '')).split(' ').includes(year)) : []
-  if (yearMatches.length === 1 && yearMatches[0].thumbnail?.source) return article(yearMatches[0])
-  if (exact.length === 1 && exact[0].thumbnail?.source) return article(exact[0])
+  const descriptive = (item) => mediaDescriptions[type].test(item.description ?? '') || mediaQualifier(item, type)
+  const strict = initialPages ?? await search(`intitle:"${cleaned}" ${qualifier} ${year}`.trim())
+  const exact = exactArticles(strict, cleaned, type)
+  const preferred = preferredArticle(exact, year)
+  if (preferred) return article(preferred)
   if (exact.length > 1) return { suggestions: exact.map(article), ambiguous: true }
 
   const words = cleaned.split(' ').filter((word) => !ignoredWords.has(word))
@@ -123,11 +139,57 @@ export async function findBookCover({ title, author, coverRequired = true }) {
     && (!author || book.author_name?.some((name) => normalize(name) === normalize(author))))
   if (!result) throw new Error('No matching cover in Open Library. Try a Wikipedia article or a direct cover image URL.')
   return {
+    title: result.title,
+    description: result.author_name?.join(', '),
     image: result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false` : undefined,
     year: result.first_publish_year,
     genres: result.subject ?? [],
     author: result.author_name?.join(', '),
   }
+}
+
+export async function findArtworkOptions({ title, type, year, page, author }) {
+  const cleaned = normalizeTitle(title)
+  if (page && !wikipediaTitle(page)) throw new Error('Enter an English Wikipedia article URL.')
+  const bookLookup = type === 'book' && !page
+  // Use one broad Wikipedia query for the common title-only flow.
+  const articleLookup = page ? findPoster({ title, type, year, page }) : bookLookup ? findBookCover({ title, author }) : null
+  const versionLookup = cleaned ? wikipediaPages({
+    generator: 'search', gsrsearch: `intitle:"${cleaned}"`, gsrnamespace: '0', gsrlimit: '25',
+  }) : Promise.resolve([])
+  const [primary, related] = await Promise.allSettled([articleLookup, versionLookup])
+  const pages = related.status === 'fulfilled' ? related.value : []
+  const versions = pages.filter((item) => {
+    const name = normalizeTitle(item.title)
+    const description = item.description ?? ''
+    return item.thumbnail?.source && (name === cleaned || name.startsWith(cleaned + ' ')) &&
+      /manga|book|novel|film|series|television|anime|\bseason\b/i.test(description) &&
+      !/video game/i.test(description)
+  }).sort((a, b) => Number(/ season \d+$/i.test(a.title)) - Number(/ season \d+$/i.test(b.title)))
+  const exact = exactArticles(pages, cleaned, type)
+  let primaryResult = primary.status === 'fulfilled' ? primary.value : null
+  if (!articleLookup && versions.length) {
+    const typed = exact.filter((item) => mediaQualifier(item, type) || mediaDescriptions[type].test(item.description ?? ''))
+    const preferred = preferredArticle(typed.length ? typed : exact, year)
+    if (preferred) primaryResult = article(preferred)
+    else if (exact.length > 1) primaryResult = { suggestions: exact.map(article) }
+  }
+  if (!primaryResult && !versions.length) {
+    if (articleLookup && !page) throw primary.reason
+    if (related.status === 'rejected') throw related.reason
+    primaryResult = await findPoster({ title, type, year, page, initialPages: pages })
+  }
+  const candidates = primaryResult ? primaryResult.suggestions ?? [primaryResult] : []
+  const unique = new Map()
+  for (const candidate of [...candidates, ...versions.map(article)]) {
+    const key = candidate.page ?? candidate.image
+    if (key && !unique.has(key)) unique.set(key, candidate)
+  }
+  const suggestions = [...unique.values()].slice(0, 15)
+  if (!suggestions.length) throw new Error('No matching images found.')
+  const preferred = primaryResult && !primaryResult.suggestions ? primaryResult
+    : suggestions.length === 1 && suggestions[0].image ? suggestions[0] : null
+  return { suggestions, preferred }
 }
 
 async function wikidata(ids, props) {
