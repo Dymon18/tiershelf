@@ -979,7 +979,7 @@ function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   search.value = ''
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
   if (editor.open) editor.close()
-  byId('mode').textContent = isOwner ? 'Dymon mode' : viewerMode ? 'Viewer mode' : 'Demo mode'
+  byId('mode').textContent = isOwner ? 'Dymon mode' : viewerMode ? 'Friend mode' : 'Demo mode'
   byId('add-button').hidden = viewerMode
   accountButton.textContent = isOwner ? 'Sign out' : 'Dymon login'
   byId('footer-text').textContent = isOwner

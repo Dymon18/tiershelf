@@ -43,7 +43,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
 
   function setMode(current) {
     accessVersion++
-    button.textContent = current === 'dymon' ? 'Viewer access' : current === 'viewer' ? 'Exit viewer' : 'Viewer mode'
+    button.textContent = current === 'dymon' ? 'Friend access' : current === 'viewer' ? 'Exit Friend mode' : 'Friend mode'
     button.hidden = !db
     if (dialog.open) dialog.close()
     if (admin.open) admin.close()
@@ -84,7 +84,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     if (unlock.disabled || !db || mode() !== 'demo') return
     const submitted = key.value.trim()
     if (!validLength(submitted)) {
-      state.textContent = 'Enter the full viewer key Dymon shared.'
+      state.textContent = 'Enter the full friend key Dymon shared.'
       return
     }
     const version = ++accessVersion
@@ -95,7 +95,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
       if (version !== accessVersion || mode() !== 'demo' || !dialog.open) return
       if (error) {
         state.textContent = error.code === 'PGRST202'
-          ? 'Viewer access is still being set up.'
+          ? 'Friend access is still being set up.'
           : 'Could not check the key. Try again.'
       } else if (!Array.isArray(data?.shelf) || !Array.isArray(data?.questlog)) state.textContent = 'This key did not unlock TierShelf. Check with Dymon.'
       else openSnapshot(data, submitted)
@@ -128,7 +128,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
       if (error) {
         setup.hidden = error.code !== 'PGRST202'
         customSetup.hidden = !(custom && error.code === '22023')
-        adminState.textContent = setup.hidden && customSetup.hidden ? 'Could not update viewer access. Try again.' : ''
+        adminState.textContent = setup.hidden && customSetup.hidden ? 'Could not update friend access. Try again.' : ''
       } else {
         if (nextKey) {
           customKey.value = ''
@@ -137,11 +137,11 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
           adminState.textContent = 'Key ready. Copy it before closing.'
         } else {
           resetKeyOutput()
-          adminState.textContent = 'Viewer access is off for future visits.'
+          adminState.textContent = 'Friend access is off for future visits.'
         }
       }
     } catch {
-      if (version === accessVersion) adminState.textContent = 'Could not update viewer access. Try again.'
+      if (version === accessVersion) adminState.textContent = 'Could not update friend access. Try again.'
     } finally {
       if (version === accessVersion) {
         generate.disabled = false

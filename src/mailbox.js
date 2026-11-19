@@ -184,7 +184,7 @@ export function createMailbox(db, openRecommendation) {
       if (request !== version) return
       if (error) throw error
       if (!data) {
-        status.textContent = 'This viewer key is no longer active. Ask Dymon for the current key.'
+        status.textContent = 'This friend key is no longer active. Ask Dymon for the current key.'
         return
       }
       form.reset()
