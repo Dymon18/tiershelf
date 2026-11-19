@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
+import { createQueue } from './queue.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
@@ -28,6 +29,8 @@ const movieInputs = {}
 const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
+
+const queue = createQueue(db)
 
 const byId = (id) => document.getElementById(id)
 const board = byId('board')
@@ -898,6 +901,7 @@ byId('clear-categories').addEventListener('click', () => {
 function setMode(isOwner, records) {
   frameVersion++
   ownerMode = isOwner
+  queue.setOwner(isOwner)
   document.body.dataset.mode = isOwner ? 'dymon' : 'demo'
   entries = records
   filter = 'movie'

@@ -22,4 +22,6 @@ Use **Dymon login** to sign in and save a title. Open the site on another device
 
 ## Credits
 
-The Demo mode frame uses the T. rex sprite from the [Chromium offline sprite sheet](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-offline-sprite.png). [Chromium license](public/credits/chromium-license.txt)
+The Demo mode background uses the T. rex sprite from the [Chromium offline sprite sheet](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-offline-sprite.png). [Chromium license](public/credits/chromium-license.txt)
+
+PokéQueue uses the species list and sprites from [PokéAPI](https://pokeapi.co/). Pokémon artwork belongs to its respective rights holders.

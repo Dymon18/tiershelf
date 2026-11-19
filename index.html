@@ -9,12 +9,7 @@
   <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
 <body data-mode="demo">
-  <div class="mode-frame" aria-hidden="true">
-    <span class="mode-frame-top"></span>
-    <span class="mode-frame-right"></span>
-    <span class="mode-frame-bottom"></span>
-    <span class="mode-frame-left"></span>
-  </div>
+  <div class="mode-pattern" aria-hidden="true"></div>
   <header class="topbar">
     <div class="frame nav">
       <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
@@ -22,40 +17,58 @@
     </div>
   </header>
   <main class="frame">
-    <section class="intro" aria-labelledby="title">
-      <div>
-        <h1 id="title">The archive<span>.</span></h1>
-        <p id="description">Rank the movies, books, and series you finish.</p>
-        <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
-      </div>
-      <figure class="cookie-banner">
-        <img src="/danisa-cookie-tier-list.webp" alt="Danisa butter cookie tier list, with chocolate chip in S tier and spools of sewing thread in E tier" width="761" height="790">
-      </figure>
-    </section>
-    <section aria-label="Tier list">
-      <div class="toolbar">
-        <div class="filters" role="group" aria-label="Filter by media type">
-          <button data-filter="movie" aria-pressed="true">Movies</button>
-          <button data-filter="book" aria-pressed="false">Books</button>
-          <button data-filter="anime" aria-pressed="false">Series</button>
+    <nav id="archive-nav" class="section-nav" aria-label="Dymon mode" hidden>
+      <button id="show-archive" type="button" aria-controls="archive-view" aria-pressed="true">Tier list</button>
+      <button id="show-queue" type="button" aria-controls="queue-view" aria-pressed="false">PokéQueue</button>
+    </nav>
+    <div id="archive-view">
+      <section class="intro" aria-labelledby="title">
+        <div>
+          <h1 id="title">The archive<span>.</span></h1>
+          <p id="description">Rank the movies, books, and series you finish.</p>
+          <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
         </div>
-        <details id="category-filter" class="category-filter">
-          <summary id="category-filter-label">Categories</summary>
-          <div class="filter-panel">
-            <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
-            <button id="clear-categories" class="button" type="button">Clear</button>
-            <div id="filter-options" class="category-options"></div>
-            <div id="movie-filters"></div>
+        <figure class="cookie-banner">
+          <img src="/danisa-cookie-tier-list.webp" alt="Danisa butter cookie tier list, with chocolate chip in S tier and spools of sewing thread in E tier" width="761" height="790">
+        </figure>
+      </section>
+      <section aria-label="Tier list">
+        <div class="toolbar">
+          <div class="filters" role="group" aria-label="Filter by media type">
+            <button data-filter="movie" aria-pressed="true">Movies</button>
+            <button data-filter="book" aria-pressed="false">Books</button>
+            <button data-filter="anime" aria-pressed="false">Series</button>
           </div>
-        </details>
-        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
+          <details id="category-filter" class="category-filter">
+            <summary id="category-filter-label">Categories</summary>
+            <div class="filter-panel">
+              <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
+              <button id="clear-categories" class="button" type="button">Clear</button>
+              <div id="filter-options" class="category-options"></div>
+              <div id="movie-filters"></div>
+            </div>
+          </details>
+          <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
+        </div>
+        <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
+        <p id="rank-setup" class="setup-note" hidden>To save the order within a tier, run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/004_tier_order.sql" target="_blank" rel="noopener">SB tier order migration</a> and refresh.</p>
+        <div id="board" class="board"></div>
+        <p id="status" class="status" role="status"></p>
+      </section>
+      <footer><span id="footer-text">Demo edits reset when you refresh or close this tab.</span></footer>
+    </div>
+    <section id="queue-view" class="queue-view" aria-labelledby="queue-heading" hidden>
+      <header class="queue-heading">
+        <h1 id="queue-heading" tabindex="-1">PokéQueue<span>.</span></h1>
+        <p>What to watch or read next.</p>
+      </header>
+      <p id="queue-status" role="status"></p>
+      <div id="queue-setup" class="queue-setup" hidden>
+        <p>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/006_pokequeue.sql" target="_blank" rel="noopener">SB PokéQueue migration</a> to start saving your queue.</p>
+        <button type="button" id="queue-retry" class="button" hidden>Try again</button>
       </div>
-      <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
-      <p id="rank-setup" class="setup-note" hidden>To save the order within a tier, run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/004_tier_order.sql" target="_blank" rel="noopener">SB tier order migration</a> and refresh.</p>
-      <div id="board" class="board"></div>
-      <p id="status" class="status" role="status"></p>
+      <div id="queue-columns" class="queue-columns"></div>
     </section>
-    <footer><span id="footer-text">Demo edits reset when you refresh or close this tab.</span></footer>
   </main>
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="entry-form">
@@ -108,6 +121,26 @@
       </fieldset>
       <p id="editor-status" role="status"></p>
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
+    </form>
+  </dialog>
+  <dialog id="queue-editor" aria-labelledby="queue-editor-heading">
+    <form id="queue-form">
+      <div class="dialog-heading">
+        <h2 id="queue-editor-heading">Add to PokéQueue</h2>
+        <button type="button" class="icon-button" id="close-queue-editor" aria-label="Close editor">×</button>
+      </div>
+      <label>Title<input id="queue-title" maxlength="200" autocomplete="off" required></label>
+      <label id="queue-author-field" class="queue-field">Author<input id="queue-author" maxlength="200" autocomplete="off"></label>
+      <label id="queue-alias-field" class="queue-field">Recommended by
+        <input id="queue-alias" list="pokemon-aliases" maxlength="60" autocomplete="off" placeholder="Pokémon name">
+      </label>
+      <datalist id="pokemon-aliases"></datalist>
+      <div id="queue-alias-preview" class="queue-alias-preview"></div>
+      <p id="queue-editor-status" role="status"></p>
+      <div class="form-actions">
+        <button type="button" id="queue-delete" class="button danger" hidden>Delete</button>
+        <button type="submit" id="queue-save" class="button primary">Save to queue</button>
+      </div>
     </form>
   </dialog>
   <dialog id="login-dialog" aria-labelledby="login-title">
