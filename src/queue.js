@@ -7,14 +7,15 @@ const mediaTypes = [
   { key: 'anime', label: 'Series' },
 ]
 const sources = [
-  { key: 'recommended', label: 'Recommended', add: 'Add recommendation' },
-  { key: 'self', label: 'Self-added', add: 'Add for myself' },
+  { key: 'recommended', label: 'SideQuest', add: 'Add to SideQuest' },
+  { key: 'self', label: 'BackLog', add: 'Add to BackLog' },
 ]
 const tableName = 'tiershelf_queue'
 const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
 const artworkColumns = basicColumns + ',artwork_url'
 const priorityColumn = ',queue_position'
-const queueHash = '#pokequeue'
+const queueHash = '#questlog'
+const queueHashes = new Set([queueHash, '#pokequeue'])
 const byId = (id) => document.getElementById(id)
 function cell(tag, value) {
   const node = document.createElement(tag)
@@ -71,7 +72,7 @@ export function createQueue(db, openTierEditor) {
     if (remember) {
       const url = new URL(location.href)
       if (showQueue) url.hash = queueHash
-      else if (url.hash === queueHash) url.hash = ''
+      else if (queueHashes.has(url.hash)) url.hash = ''
       history.replaceState(history.state, '', url)
     }
     document.body.dataset.view = showQueue ? 'queue' : 'archive'
@@ -176,7 +177,7 @@ export function createQueue(db, openTierEditor) {
         const name = pokemonName(entry.pokemon_id) || 'Pokémon'
         const badge = cell('span', source.key === 'self' ? '' : name)
         badge.className = 'queue-pokemon-name'
-        if (source.key === 'self') badge.setAttribute('aria-label', 'Ditto (self-added)')
+        if (source.key === 'self') badge.setAttribute('aria-label', 'Ditto (BackLog)')
         badge.prepend(pokemonSprite(entry.pokemon_id))
         if (source.key === 'self') badge.firstChild.alt = 'Ditto'
         from.append(badge)
@@ -209,7 +210,7 @@ export function createQueue(db, openTierEditor) {
       actions.append(button)
     }
 
-    const promote = cell('button', promoted.has(entry.id) ? 'In tier list' : 'Promote to tier list')
+    const promote = cell('button', promoted.has(entry.id) ? 'In MyShelf' : 'Promote to MyShelf')
     promote.type = 'button'
     promote.className = 'button'
     promote.dataset.queuePromote = entry.id
@@ -293,7 +294,7 @@ export function createQueue(db, openTierEditor) {
     if (!owner || loading || loaded) return
     const session = version
     loading = true
-    status.textContent = 'Loading your queue…'
+    status.textContent = 'Loading QuestLog…'
     setup.hidden = true
     retry.hidden = true
     try {
@@ -325,7 +326,7 @@ export function createQueue(db, openTierEditor) {
     } catch (error) {
       if (session !== version) return
       const missing = ['42P01', 'PGRST205'].includes(error.code)
-      status.textContent = missing ? 'PokéQueue needs its Supabase table.' : 'Could not load your queue.'
+      status.textContent = missing ? 'QuestLog needs its Supabase table.' : 'Could not load QuestLog.'
       setup.hidden = false
       setup.querySelector('p').hidden = !missing
       retry.textContent = missing ? 'Check again' : 'Try again'
@@ -339,7 +340,7 @@ export function createQueue(db, openTierEditor) {
     alias.setCustomValidity('')
     preview.replaceChildren()
     const id = activeEntry?.source === 'self' ? ditto : pokemonId(alias.value)
-    if (id) preview.append(pokemonSprite(id), activeEntry?.source === 'self' ? 'Ditto · Self-added' : pokemonName(id))
+    if (id) preview.append(pokemonSprite(id), activeEntry?.source === 'self' ? 'Ditto · BackLog' : pokemonName(id))
   }
 
   function openEditor(entry, button) {
@@ -363,8 +364,8 @@ export function createQueue(db, openTierEditor) {
     alias.required = !self
     alias.value = self ? '' : pokemonName(entry.pokemon_id)
     remove.hidden = !entry.id
-    byId('queue-editor-heading').textContent = entry.id ? 'Edit queue entry'
-      : self ? 'Add for myself' : 'Add recommendation'
+    byId('queue-editor-heading').textContent = entry.id ? 'Edit QuestLog entry'
+      : self ? 'Add to BackLog' : 'Add to SideQuest'
     formStatus.textContent = ''
     updateAlias()
     dialog.showModal()
@@ -485,9 +486,9 @@ export function createQueue(db, openTierEditor) {
       const returnButton = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === data.id)
         ?? board.querySelector(`[data-queue-add="${entry.media_type}-${entry.source}"]`)
       returnButton?.focus({ preventScroll: true })
-      status.textContent = removeEntry ? 'Removed from PokéQueue.'
+      status.textContent = removeEntry ? 'Removed from QuestLog.'
         : !columns.includes(',artwork_url') && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
-        : 'Saved to PokéQueue.'
+        : 'Saved to QuestLog.'
     } catch {
       if (session === version) formStatus.textContent = 'Could not save that change. Try again.'
     } finally {
@@ -556,7 +557,7 @@ export function createQueue(db, openTierEditor) {
     finishPromotion(id) {
       const button = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === id)
       button?.focus({ preventScroll: true })
-      status.textContent = 'Added to your tier list.'
+      status.textContent = 'Added to MyShelf.'
     },
     setOwner(isOwner) {
       if (owner === isOwner) return
@@ -583,8 +584,8 @@ export function createQueue(db, openTierEditor) {
       formStatus.textContent = ''
       setup.hidden = true
       nav.hidden = !owner
-      const reopenQueue = owner && location.hash === queueHash
-      switchView(reopenQueue, !owner)
+      const reopenQueue = owner && queueHashes.has(location.hash)
+      switchView(reopenQueue, reopenQueue || !owner)
       if (reopenQueue) load()
     },
   }

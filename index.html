@@ -18,13 +18,13 @@
   </header>
   <main class="frame">
     <nav id="archive-nav" class="section-nav" aria-label="Dymon mode" hidden>
-      <button id="show-archive" type="button" aria-controls="archive-view" aria-pressed="true">Tier list</button>
-      <button id="show-queue" type="button" aria-controls="queue-view" aria-pressed="false">PokéQueue</button>
+      <button id="show-archive" type="button" aria-controls="archive-view" aria-pressed="true">MyShelf</button>
+      <button id="show-queue" type="button" aria-controls="queue-view" aria-pressed="false">QuestLog</button>
     </nav>
     <div id="archive-view">
       <section class="intro" aria-labelledby="title">
         <div>
-          <h1 id="title">The archive<span>.</span></h1>
+          <h1 id="title">MyShelf<span aria-hidden="true">.</span></h1>
           <p id="description">Rank the movies, books, and series you finish.</p>
           <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
         </div>
@@ -32,7 +32,7 @@
           <img src="/danisa-cookie-tier-list.webp" alt="Danisa butter cookie tier list, with chocolate chip in S tier and spools of sewing thread in E tier" width="761" height="790">
         </figure>
       </section>
-      <section aria-label="Tier list">
+      <section aria-label="MyShelf tiers">
         <div class="toolbar">
           <div class="filters" role="group" aria-label="Filter by media type">
             <button data-filter="movie" aria-pressed="true">Movies</button>
@@ -59,13 +59,13 @@
     </div>
     <section id="queue-view" class="queue-view" aria-labelledby="queue-heading" hidden>
       <header class="queue-heading">
-        <h1 id="queue-heading" tabindex="-1">PokéQueue<span>.</span></h1>
+        <h1 id="queue-heading" tabindex="-1">QuestLog<span aria-hidden="true">.</span></h1>
         <p>What to watch or read next.</p>
         <button id="queue-compact" type="button" class="button" aria-pressed="false" aria-controls="queue-columns">Compact books view</button>
       </header>
       <p id="queue-status" role="status"></p>
       <div id="queue-setup" class="queue-setup" hidden>
-        <p>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/006_pokequeue.sql" target="_blank" rel="noopener">SB PokéQueue migration</a> to start saving your queue.</p>
+        <p>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/006_pokequeue.sql" target="_blank" rel="noopener">SB QuestLog migration</a> to start saving your QuestLog.</p>
         <button type="button" id="queue-retry" class="button" hidden>Try again</button>
       </div>
       <p id="queue-artwork-setup" class="queue-setup" hidden>
@@ -135,7 +135,7 @@
   <dialog id="queue-editor" aria-labelledby="queue-editor-heading">
     <form id="queue-form">
       <div class="dialog-heading">
-        <h2 id="queue-editor-heading">Add to PokéQueue</h2>
+        <h2 id="queue-editor-heading">Add to QuestLog</h2>
         <button type="button" class="icon-button" id="close-queue-editor" aria-label="Close editor">×</button>
       </div>
       <label>Title<input id="queue-title" maxlength="200" autocomplete="off" required></label>

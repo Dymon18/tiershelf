@@ -447,7 +447,7 @@ function openEditor(entry, defaultGrade = 'A') {
   editorReturn = { x: window.scrollX, y: window.scrollY, grade: entry?.grade ?? defaultGrade,
     queueId: promoting ? entry.source_queue_id : null }
   editing = entry ?? null
-  byId('editor-title').textContent = promoting ? 'Promote to tier list' : entry?.id ? 'Edit title' : 'Add title'
+  byId('editor-title').textContent = promoting ? 'Promote to MyShelf' : entry?.id ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
   authorInput.value = entry?.author ?? ''
   const recommendField = byId('entry-recommender-field')
@@ -579,7 +579,7 @@ async function save(record) {
         ? db.from('tiershelf_entries').update(fields).eq('id', id)
         : db.from('tiershelf_entries').insert(fields)
       const { data, error } = await request.select(archiveColumns).single()
-      if (error?.code === '23505' && source_queue_id) throw new Error('This queue entry is already in the tier list. Refresh to see it.')
+      if (error?.code === '23505' && source_queue_id) throw new Error('This entry is already in MyShelf. Refresh to see it.')
       if (error) throw new Error('Could not save this title. Try again.')
       result = data
     } finally {

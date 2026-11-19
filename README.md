@@ -24,4 +24,4 @@ Use **Dymon login** to sign in and save a title. Open the site on another device
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)
 
-PokéQueue uses the species list, Pokémon sprites, and Poké Ball item sprite from [PokéAPI](https://pokeapi.co/). Pokémon artwork belongs to its respective rights holders.
+QuestLog uses the species list, Pokémon sprites, and Poké Ball item sprite from [PokéAPI](https://pokeapi.co/). Pokémon artwork belongs to its respective rights holders.
