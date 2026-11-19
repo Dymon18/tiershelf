@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="A personal tier list for movies, books, and anime.">
+  <meta name="description" content="A personal tier list for movies, books, and series.">
   <meta name="theme-color" content="#151718">
   <title>TierShelf</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
@@ -11,7 +11,7 @@
 <body>
   <header class="topbar">
     <div class="frame nav">
-      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>TierShelf</a>
+      <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
       <div class="account"><span id="mode" class="mode">Demo mode</span><button id="account-button" class="button">Dymon login</button></div>
     </div>
   </header>
@@ -19,7 +19,7 @@
     <section class="intro" aria-labelledby="title">
       <div>
         <h1 id="title">The archive<span>.</span></h1>
-        <p id="description">Rank the movies, books, and anime you finish.</p>
+        <p id="description">Rank the movies, books, and series you finish.</p>
         <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
       </div>
       <figure class="cookie-banner">
@@ -29,11 +29,11 @@
     <section aria-label="Tier list">
       <div class="toolbar">
         <div class="filters" role="group" aria-label="Filter by media type">
-          <button data-filter="all" aria-pressed="true">All titles</button>
-          <button data-filter="movie" aria-pressed="false">Movies</button>
+          <button data-filter="movie" aria-pressed="true">Movies</button>
           <button data-filter="book" aria-pressed="false">Books</button>
-          <button data-filter="anime" aria-pressed="false">Anime</button>
+          <button data-filter="anime" aria-pressed="false">Series</button>
         </div>
+        <label class="category-filter"><span id="category-filter-label">Category</span><select id="category-filter"></select></label>
         <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
       </div>
       <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
@@ -47,9 +47,26 @@
       <div class="dialog-heading"><h2 id="editor-title">Add title</h2><button type="button" class="icon-button" id="close-editor" aria-label="Close editor">×</button></div>
       <label>Title<input id="entry-title" maxlength="200" required autocomplete="off"></label>
       <div class="fields">
-        <label>Media type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Anime</option></select></label>
-        <label>Grade<select id="entry-grade"></select></label>
+        <label>Type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Series</option></select></label>
+        <label>Tier<select id="entry-grade"></select></label>
       </div>
+      <fieldset id="entry-details">
+        <legend>Details</legend>
+        <label>Release year <input id="entry-year" type="number" min="1" max="9999" step="1"></label>
+        <fieldset class="category-picker">
+          <legend id="category-legend">Categories</legend>
+          <div id="entry-categories" class="category-options"></div>
+          <div class="inline-field">
+            <input id="new-category" maxlength="48" aria-label="New category name" placeholder="New category">
+            <button id="add-category" type="button" class="button">Add</button>
+          </div>
+        </fieldset>
+        <label>Wikipedia page <input id="entry-wikipedia" type="url" maxlength="2000" placeholder="Optional — look up by title"></label>
+        <button id="find-poster" type="button" class="button">Find poster</button>
+        <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
+        <img id="poster-preview" alt="Poster preview" hidden>
+        <p id="poster-status" role="status"></p>
+      </fieldset>
       <p id="editor-status" role="status"></p>
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
     </form>

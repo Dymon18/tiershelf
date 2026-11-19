@@ -1,18 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
+import { findPoster, httpsUrl, wikipediaTitle } from './posters.js'
 
 const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
   D: '#a6dbbc', E: '#a6cde8', F: '#c4b9ed',
 }
-const types = { movie: 'Movie', book: 'Book', anime: 'Anime' }
+const types = { movie: 'Movie', book: 'Book', anime: 'Series' }
 const samples = [
-  ['Spirited Away', 'anime', 'S'], ['Piranesi', 'book', 'S'], ['Parasite', 'movie', 'S'],
+  ['Spirited Away', 'movie', 'S'], ['Piranesi', 'book', 'S'], ['Parasite', 'movie', 'S'],
   ['Arrival', 'movie', 'A'], ['The Hobbit', 'book', 'A'], ['Frieren: Beyond Journey’s End', 'anime', 'A'],
   ['Interstellar', 'movie', 'B'], ['Spy × Family', 'anime', 'B'],
   ['The Martian', 'book', 'C'], ['Tron: Legacy', 'movie', 'D'],
 ]
+const starterCategories = {
+  movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Animation', 'Musical', 'Action'],
+  book: ['Fantasy', 'Sci-fi', 'Mystery', 'Romance', 'Nonfiction'],
+  anime: ['Animation', 'Anime', 'K-drama', 'TV Show'],
+}
+const sampleCategories = {
+  'Spirited Away': ['Studio Ghibli', 'Animation'],
+  'Piranesi': ['Fantasy'],
+  'The Hobbit': ['Fantasy'],
+  'The Martian': ['Sci-fi'],
+  'Frieren: Beyond Journey’s End': ['Animation', 'Anime'],
+  'Spy × Family': ['Animation', 'Anime'],
+}
+const basicColumns = 'id,title,media_type,grade'
+const fullColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
 const db = config?.supabaseUrl && config?.supabasePublishableKey
   ? createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { flowType: 'pkce' } })
   : null
@@ -27,15 +43,34 @@ const githubButton = byId('github-login')
 const titleInput = byId('entry-title')
 const gradeInput = byId('entry-grade')
 const typeInput = byId('entry-type')
+const categoryFilter = byId('category-filter')
+const categoryList = byId('entry-categories')
+const newCategory = byId('new-category')
+const yearInput = byId('entry-year')
+const wikiInput = byId('entry-wikipedia')
+const posterInput = byId('entry-poster')
+const posterPreview = byId('poster-preview')
+const posterStatus = byId('poster-status')
+const posterButton = byId('find-poster')
 const editorStatus = byId('editor-status')
 const saveButton = byId('save-button')
 const deleteButton = byId('delete-button')
 const filters = document.querySelectorAll('[data-filter]')
 const demo = samples.map(([title, media_type, grade], index) => ({
-  id: `demo-${index}`, title, media_type, grade,
+  id: `demo-${index}`, title, media_type, grade, categories: sampleCategories[title] ?? [],
 }))
+demo.push({
+  id: 'demo-pacific-rim', title: 'Pacific Rim', media_type: 'movie', grade: 'S',
+  categories: ['Action', 'Sci-fi'], release_year: 2013,
+  wikipedia_url: 'https://en.wikipedia.org/wiki/Pacific_Rim_(film)',
+  poster_url: 'https://upload.wikimedia.org/wikipedia/en/f/f3/Pacific_Rim_FilmPoster.jpeg',
+})
 let entries = demo
-let filter = 'all'
+let filter = 'movie'
+let category = ''
+let archiveDetails = true
+let selectedCategories = new Set()
+let lookupVersion = 0
 let ownerMode = false
 let editing = null
 let dragging = null
@@ -47,16 +82,42 @@ function status(message) {
   byId('status').textContent = message
 }
 
+function categoriesFor(type) {
+  const items = [...starterCategories[type]]
+  for (const entry of entries) {
+    if (entry.media_type === type) items.push(...(entry.categories ?? []))
+  }
+  const unique = new Map()
+  for (const item of items) {
+    const key = item.toLowerCase()
+    if (!unique.has(key)) unique.set(key, item)
+  }
+  return [...unique.values()].sort((a, b) => a.localeCompare(b))
+}
+
+function renderCategoryFilter() {
+  byId('category-filter-label').textContent = filter === 'book' ? 'Genre' : 'Category'
+  const options = categoriesFor(filter)
+  if (!options.some((name) => name.toLowerCase() === category)) category = ''
+  categoryFilter.replaceChildren(new Option(filter === 'book' ? 'All genres' : 'All categories', ''))
+  for (const name of options) categoryFilter.add(new Option(name, name.toLowerCase()))
+  categoryFilter.value = category
+  categoryFilter.disabled = ownerMode && !archiveDetails
+}
+
 function render() {
+  renderCategoryFilter()
   const query = search.value.trim().toLowerCase()
-  const visible = entries.filter((entry) =>
-    (filter === 'all' || filter === entry.media_type) && entry.title.toLowerCase().includes(query),
+  const shelf = entries.filter((entry) => entry.media_type === filter)
+  const visible = shelf.filter((entry) =>
+    (!category || entry.categories?.some((name) => name.toLowerCase() === category)) &&
+    entry.title.toLowerCase().includes(query),
   )
-  byId('count').textContent = visible.length === entries.length
-    ? `${entries.length} ${entries.length === 1 ? 'title' : 'titles'}`
-    : `${visible.length} of ${entries.length} titles`
+  byId('count').textContent = visible.length === shelf.length
+    ? `${shelf.length} ${shelf.length === 1 ? 'title' : 'titles'}`
+    : `${visible.length} of ${shelf.length} titles`
   byId('hint').textContent = matchMedia('(pointer: coarse)').matches
-    ? 'Tap a title to change its grade'
+    ? 'Tap a title to change its tier'
     : 'Drag titles between tiers'
   board.replaceChildren()
   for (const [grade, color] of Object.entries(grades)) {
@@ -78,7 +139,7 @@ function render() {
     if (!ranked.length) {
       const empty = document.createElement('span')
       empty.className = 'empty'
-      empty.textContent = query || filter !== 'all' ? 'No matching titles' : 'No titles yet'
+      empty.textContent = query || category ? 'No matching titles' : 'No titles yet'
       cards.append(empty)
     }
 
@@ -119,6 +180,22 @@ function createCard(entry) {
   const type = document.createElement('span')
   type.textContent = types[entry.media_type]
   card.append(name, type)
+  card.title = entry.release_year ? `${entry.title} (${entry.release_year})` : entry.title
+  const poster = httpsUrl(entry.poster_url)
+  if (poster) {
+    const image = document.createElement('img')
+    image.alt = ''
+    image.loading = 'lazy'
+    image.draggable = false
+    image.referrerPolicy = 'no-referrer'
+    image.addEventListener('error', () => {
+      image.remove()
+      card.classList.remove('poster-card')
+    }, { once: true })
+    card.classList.add('poster-card')
+    card.prepend(image)
+    image.src = poster.href
+  }
   card.addEventListener('click', () => openEditor(entry))
   card.addEventListener('dragstart', (event) => {
     dragging = entry
@@ -136,12 +213,69 @@ function openEditor(entry) {
   editing = entry ?? null
   byId('editor-title').textContent = entry ? 'Edit title' : 'Add title'
   titleInput.value = entry?.title ?? ''
-  typeInput.value = entry?.media_type ?? (filter === 'all' ? 'movie' : filter)
+  typeInput.value = entry?.media_type ?? filter
+  byId('entry-details').hidden = ownerMode && !archiveDetails
+  selectedCategories = new Set(entry?.categories ?? [])
+  newCategory.value = ''
+  yearInput.value = entry?.release_year ?? ''
+  wikiInput.value = entry?.wikipedia_url ?? ''
+  posterInput.value = entry?.poster_url ?? ''
+  lookupVersion++
+  posterButton.disabled = false
+  posterStatus.textContent = ''
+  renderCategoryPicker()
+  previewPoster()
   gradeInput.value = entry?.grade ?? 'A'
   deleteButton.hidden = !entry
   editorStatus.textContent = ''
   editor.showModal()
   titleInput.focus()
+}
+
+function renderCategoryPicker() {
+  byId('category-legend').textContent = typeInput.value === 'book' ? 'Genres' : 'Categories'
+  newCategory.placeholder = typeInput.value === 'book' ? 'New genre' : 'New category'
+  const options = new Map()
+  for (const name of [...categoriesFor(typeInput.value), ...selectedCategories]) {
+    const key = name.toLowerCase()
+    if (!options.has(key)) options.set(key, name)
+  }
+  categoryList.replaceChildren()
+  for (const [key, name] of options) {
+    const label = document.createElement('label')
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = [...selectedCategories].some((item) => item.toLowerCase() === key)
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedCategories.add(name)
+      else for (const item of selectedCategories) {
+        if (item.toLowerCase() === key) selectedCategories.delete(item)
+      }
+    })
+    label.append(checkbox, name)
+    categoryList.append(label)
+  }
+}
+
+function addCategory() {
+  const name = newCategory.value.trim().replace(/\s+/g, ' ')
+  if (!name) {
+    newCategory.focus()
+    return
+  }
+  const canonical = [...selectedCategories, ...categoriesFor(typeInput.value)]
+    .find((item) => item.toLowerCase() === name.toLowerCase()) ?? name
+  selectedCategories.add(canonical)
+  newCategory.value = ''
+  renderCategoryPicker()
+  newCategory.focus()
+}
+
+function previewPoster() {
+  const url = httpsUrl(posterInput.value.trim())
+  posterPreview.hidden = !url
+  if (url) posterPreview.src = url.href
+  else posterPreview.removeAttribute('src')
 }
 
 async function save(record) {
@@ -157,7 +291,7 @@ async function save(record) {
       const request = id
         ? db.from('tiershelf_entries').update(fields).eq('id', id)
         : db.from('tiershelf_entries').insert(fields)
-      const { data, error } = await request.select('id,title,media_type,grade').single()
+      const { data, error } = await request.select(archiveDetails ? fullColumns : basicColumns).single()
       if (error) throw new Error('Could not save this title. Try again.')
       result = data
     } finally {
@@ -217,6 +351,49 @@ async function submitEditor(action, focusId) {
   }
 }
 
+typeInput.addEventListener('change', () => {
+  selectedCategories = new Set(typeInput.value === editing?.media_type ? editing.categories ?? [] : [])
+  newCategory.value = ''
+  renderCategoryPicker()
+})
+byId('add-category').addEventListener('click', addCategory)
+newCategory.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    addCategory()
+  }
+})
+posterPreview.referrerPolicy = 'no-referrer'
+posterPreview.addEventListener('error', () => {
+  posterPreview.hidden = true
+  posterStatus.textContent = 'The image could not load. Try another direct image URL.'
+})
+posterInput.addEventListener('input', () => {
+  lookupVersion++
+  posterButton.disabled = false
+  posterStatus.textContent = ''
+  previewPoster()
+})
+posterButton.addEventListener('click', async () => {
+  const version = ++lookupVersion
+  posterButton.disabled = true
+  posterStatus.textContent = 'Looking for a poster…'
+  try {
+    const poster = await findPoster({
+      title: titleInput.value.trim(), type: typeInput.value, year: yearInput.value, page: wikiInput.value.trim(),
+    })
+    if (version !== lookupVersion || !editor.open) return
+    wikiInput.value = poster.page
+    posterInput.value = poster.image
+    posterStatus.textContent = 'Poster found. Save the title to use it.'
+    previewPoster()
+  } catch (error) {
+    if (version === lookupVersion && editor.open) posterStatus.textContent = error.message
+  } finally {
+    if (version === lookupVersion) posterButton.disabled = false
+  }
+})
+
 for (const grade of Object.keys(grades)) gradeInput.add(new Option(grade, grade))
 byId('add-button').addEventListener('click', () => openEditor())
 byId('close-editor').addEventListener('click', () => editor.close())
@@ -231,25 +408,53 @@ byId('entry-form').addEventListener('submit', (event) => {
     titleInput.focus()
     return
   }
-  submitEditor(() => save({
-    id: editing?.id, title, media_type: typeInput.value, grade: gradeInput.value,
-  }), editing?.id)
+  const record = { id: editing?.id, title, media_type: typeInput.value, grade: gradeInput.value }
+  if (!ownerMode || archiveDetails) {
+    if (newCategory.value.trim()) addCategory()
+    const page = wikiInput.value.trim()
+    const image = posterInput.value.trim()
+    if (page && !wikipediaTitle(page)) {
+      editorStatus.textContent = 'Enter an English Wikipedia article URL.'
+      wikiInput.focus()
+      return
+    }
+    if (image && !httpsUrl(image)) {
+      editorStatus.textContent = 'Enter a direct HTTPS image URL.'
+      posterInput.focus()
+      return
+    }
+    if (selectedCategories.size > 30) {
+      editorStatus.textContent = 'Choose 30 categories or fewer for each title.'
+      return
+    }
+    Object.assign(record, {
+      categories: [...selectedCategories], release_year: yearInput.value ? Number(yearInput.value) : null,
+      wikipedia_url: page || null, poster_url: image || null,
+    })
+  }
+  submitEditor(() => save(record), editing?.id)
 })
 deleteButton.addEventListener('click', () => submitEditor(() => remove(editing)))
 filters.forEach((button) => button.addEventListener('click', () => {
   filter = button.dataset.filter
+  category = ''
   filters.forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
   render()
 }))
 search.addEventListener('input', render)
+categoryFilter.addEventListener('change', () => {
+  category = categoryFilter.value
+  render()
+})
 
 function setMode(isOwner, records) {
   frameVersion++
   ownerMode = isOwner
   entries = records
-  filter = 'all'
+  filter = 'movie'
+  category = ''
   search.value = ''
-  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === 'all')))
+  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
   if (editor.open) editor.close()
   byId('mode').textContent = isOwner ? 'Dymon mode' : 'Demo mode'
   accountButton.textContent = isOwner ? 'Sign out' : 'Dymon login'
@@ -309,8 +514,12 @@ if (db) {
         status(accessError ? 'Could not verify archive access.' : 'This GitHub account does not have access to Dymon mode.')
         return
       }
-      const { data, error } = await db.from('tiershelf_entries')
-        .select('id,title,media_type,grade').order('created_at').order('id')
+      const loadEntries = (columns) => db.from('tiershelf_entries')
+        .select(columns).order('created_at').order('id')
+      let result = await loadEntries(fullColumns)
+      const hasDetails = !['42703', 'PGRST204'].includes(result.error?.code)
+      if (!hasDetails) result = await loadEntries(basicColumns)
+      const { data, error } = result
       if (version !== authVersion) return
       accountButton.disabled = false
       if (error) {
@@ -318,8 +527,9 @@ if (db) {
         status('Could not load your archive. Try signing in again.')
         return
       }
+      archiveDetails = hasDetails
       setMode(true, data)
-      status('')
+      status(hasDetails ? '' : 'Run the Supabase entry details migration to save categories and posters.')
     }, 0)
   })
 }
