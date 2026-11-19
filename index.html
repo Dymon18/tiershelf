@@ -57,11 +57,15 @@
         <label id="poster-options-field" hidden><span id="poster-options-label">Did you mean?</span><select id="poster-options"></select></label>
         <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
         <label>Poster image URL <input id="entry-poster" type="url" maxlength="2000" placeholder="Optional direct image URL"></label>
-        <img id="poster-preview" alt="Poster preview" hidden>
+        <button id="select-poster" class="poster-choice" type="button" aria-label="Use this image" aria-pressed="false" hidden>
+          <img id="poster-preview" alt="Poster preview">
+        </button>
         <p id="poster-status" role="status"></p>
       </fieldset>
       <fieldset id="entry-details">
         <legend>Details</legend>
+        <button id="autofill-details" class="button" type="button">Autofill details</button>
+        <p id="autofill-status" role="status"></p>
         <label id="entry-author-field" hidden>Author <input id="entry-author" maxlength="200" autocomplete="off"></label>
         <label>Release year <input id="entry-year" type="number" min="1" max="9999" step="1"></label>
         <fieldset class="category-picker">

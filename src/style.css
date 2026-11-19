@@ -186,3 +186,20 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
   border-color: var(--grade);
   color: var(--grade);
 }
+
+.poster-choice {
+  display: block;
+  padding: 3px;
+  border: 2px solid var(--border);
+  border-radius: 7px;
+  background: #151718;
+  cursor: pointer;
+}
+
+.poster-choice[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+#autofill-status { color: var(--muted); font-size: .875rem; }
+#autofill-status:empty { display: none; }

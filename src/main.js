@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import './style.css'
 import { config } from './config.js'
-import { findBookCover, findPoster, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
+import { findBookCover, findEntryDetails, findPoster, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
 const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
@@ -38,6 +38,9 @@ const yearInput = byId('entry-year')
 const wikiInput = byId('entry-wikipedia')
 const posterInput = byId('entry-poster')
 const posterPreview = byId('poster-preview')
+const posterChoice = byId('select-poster')
+const autofillButton = byId('autofill-details')
+const autofillStatus = byId('autofill-status')
 const posterStatus = byId('poster-status')
 const posterButton = byId('find-poster')
 const posterOptions = byId('poster-options')
@@ -68,6 +71,8 @@ let archiveColumns = fullColumns
 let selectedCategories = new Set()
 let lookupVersion = 0
 let posterSuggestions = []
+let previewImage = null
+let autofillVersion = 0
 let ownerMode = false
 let editing = null
 let dragging = null
@@ -285,12 +290,21 @@ function addCategory() {
   newCategory.focus()
 }
 
-function previewPoster() {
-  const url = httpsUrl(posterInput.value.trim())
-  posterPreview.hidden = !url
-  if (url) posterPreview.src = url.href
+function previewPoster(value = posterInput.value.trim()) {
+  previewImage = httpsUrl(value)?.href ?? null
+  posterChoice.hidden = !previewImage
+  const selected = previewImage !== null && httpsUrl(posterInput.value.trim())?.href === previewImage
+  posterChoice.setAttribute('aria-pressed', String(selected))
+  if (previewImage) posterPreview.src = previewImage
   else posterPreview.removeAttribute('src')
 }
+
+posterChoice.addEventListener('click', () => {
+  if (!previewImage) return
+  posterInput.value = previewImage
+  posterChoice.setAttribute('aria-pressed', 'true')
+  posterStatus.textContent = typeInput.value === 'book' ? 'Cover selected.' : 'Poster selected.'
+})
 
 async function save(record) {
   if (pendingChanges) throw new Error('Please wait for the current change to finish.')
@@ -381,10 +395,17 @@ newCategory.addEventListener('keydown', (event) => {
 })
 posterPreview.referrerPolicy = 'no-referrer'
 posterPreview.addEventListener('error', () => {
-  posterPreview.hidden = true
+  posterChoice.hidden = true
   posterStatus.textContent = 'The image could not load. Try another direct image URL.'
 })
+function resetAutofill() {
+  autofillVersion++
+  autofillButton.disabled = false
+  autofillStatus.textContent = ''
+}
+
 function resetPosterLookup() {
+  resetAutofill()
   lookupVersion++
   posterButton.disabled = false
   posterStatus.textContent = ''
@@ -394,20 +415,13 @@ function resetPosterLookup() {
   matchTitleButton.hidden = true
 }
 
-function usePoster(poster, fromSuggestion = false) {
+function usePoster(poster) {
   if (poster.page) wikiInput.value = poster.page
-  if (poster.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
-    authorInput.value = poster.author.slice(0, 200)
-  }
   if (poster.image) {
-    posterInput.value = poster.image
-    posterStatus.textContent = typeInput.value === 'book' ? 'Cover found. Save the title to use it.' : 'Poster found. Save the title to use it.'
-    previewPoster()
+    previewPoster(poster.image)
+    posterStatus.textContent = 'Click the image to select it.'
   } else {
-    if (fromSuggestion) {
-      posterInput.value = ''
-      previewPoster()
-    }
+    previewPoster('')
     posterStatus.textContent = 'This article has no available image. You can paste a direct image URL.'
   }
 }
@@ -426,12 +440,15 @@ function showPosterSuggestions(result) {
 
 posterOptions.addEventListener('change', () => {
   const selected = posterOptions.selectedIndex > 0 ? posterSuggestions[Number(posterOptions.value)] : null
+  resetAutofill()
   matchTitleButton.hidden = !selected || selected.title === titleInput.value
-  if (selected) usePoster(selected, true)
+  if (selected) usePoster(selected)
+  else previewPoster()
 })
 matchTitleButton.addEventListener('click', () => {
   const selected = posterSuggestions[Number(posterOptions.value)]
   if (!selected || posterOptions.selectedIndex < 1) return
+  resetAutofill()
   titleInput.value = selected.title
   matchTitleButton.hidden = true
   titleInput.focus()
@@ -446,6 +463,7 @@ for (const input of [titleInput, authorInput, yearInput, wikiInput]) {
 
 posterButton.addEventListener('click', async () => {
   resetPosterLookup()
+  previewPoster()
   const version = lookupVersion
   posterButton.disabled = true
   const page = wikiInput.value.trim()
@@ -463,6 +481,79 @@ posterButton.addEventListener('click', async () => {
     if (version === lookupVersion && editor.open) posterStatus.textContent = error.message
   } finally {
     if (version === lookupVersion) posterButton.disabled = false
+  }
+})
+
+const genreAliases = {
+  'sci fi': /science fiction|^sci fi$/,
+  animation: /animat/,
+  anime: /\banime\b/,
+  'k drama': /korean drama|^k drama$/,
+  'tv show': /television (series|show|program)|^tv show$/,
+}
+
+autofillButton.addEventListener('click', async () => {
+  resetAutofill()
+  const version = autofillVersion
+  const title = titleInput.value.trim()
+  if (!title) {
+    autofillStatus.textContent = 'Enter a title first.'
+    titleInput.focus()
+    return
+  }
+  autofillButton.disabled = true
+  autofillStatus.textContent = 'Looking up details…'
+  try {
+    const type = typeInput.value
+    const page = wikiInput.value.trim()
+    const match = posterOptions.selectedIndex > 0 ? posterSuggestions[Number(posterOptions.value)] : null
+    const details = await findEntryDetails({ title, type, page, year: yearInput.value,
+      author: authorInput.value.trim(), match })
+    if (version !== autofillVersion || !editor.open) return
+    if (details.suggestions) {
+      showPosterSuggestions(details)
+      posterOptions.focus()
+      autofillStatus.textContent = 'Choose a title above, then try autofill again.'
+      return
+    }
+    const filled = []
+    if (details.year && !yearInput.value) {
+      yearInput.value = details.year
+      filled.push('release year')
+    }
+    if (details.author && !authorInput.value.trim() && !byId('entry-author-field').hidden) {
+      authorInput.value = details.author.slice(0, 200)
+      filled.push('author')
+    }
+    const genres = (details.genres ?? []).map(normalizeTitle)
+    const knownCategories = categoriesFor(type)
+    if (type === 'movie') {
+      for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller']) {
+        if (!knownCategories.some((item) => normalizeTitle(item) === normalizeTitle(name))) knownCategories.push(name)
+      }
+    }
+    const categories = knownCategories.filter((name) => {
+      const key = normalizeTitle(name)
+      return genres.some((genre) => genre === key || genre === key + ' film' || genre === key + ' novel' ||
+        genreAliases[key]?.test(genre))
+    })
+    if (!selectedCategories.size && categories.length) {
+      selectedCategories = new Set(categories.slice(0, 30))
+      renderCategoryPicker()
+      filled.push(type === 'book' ? 'genres' : 'categories')
+    }
+    if (!wikiInput.value && details.page) wikiInput.value = details.page
+    if (!previewImage && details.image) {
+      previewPoster(details.image)
+      posterStatus.textContent = 'Click the image to select it.'
+    }
+    autofillStatus.textContent = filled.length
+      ? `Filled ${filled.join(', ')}. Review them before saving.`
+      : 'No additional details were filled. You can edit the fields manually.'
+  } catch (error) {
+    if (version === autofillVersion && editor.open) autofillStatus.textContent = error.message
+  } finally {
+    if (version === autofillVersion) autofillButton.disabled = false
   }
 })
 

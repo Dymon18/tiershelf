@@ -30,7 +30,7 @@ async function wikipediaPages(parameters) {
   const endpoint = new URL('https://en.wikipedia.org/w/api.php')
   endpoint.search = new URLSearchParams({
     action: 'query', origin: '*', format: 'json', formatversion: '2', redirects: '1',
-    prop: 'description|pageimages', pithumbsize: '320', pilicense: 'any', ...parameters,
+    prop: 'description|pageimages|pageprops', pithumbsize: '320', pilicense: 'any', ...parameters,
   })
   try {
     const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) })
@@ -48,6 +48,7 @@ function article(item) {
   return {
     title: item.title,
     description: item.description,
+    entity: item.pageprops?.wikibase_item,
     image: item.thumbnail?.source,
     page: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(item.title.replaceAll(' ', '_')),
   }
@@ -102,10 +103,10 @@ export async function findPoster({ title, type, year, page }) {
   return { suggestions }
 }
 
-export async function findBookCover({ title, author }) {
+export async function findBookCover({ title, author, coverRequired = true }) {
   if (!title) throw new Error('Enter the book title.')
   const endpoint = new URL('https://openlibrary.org/search.json')
-  endpoint.search = new URLSearchParams({ title, fields: 'title,author_name,cover_i', limit: '10' })
+  endpoint.search = new URLSearchParams({ title, fields: 'title,author_name,cover_i,first_publish_year,subject', limit: '10' })
   if (author) endpoint.searchParams.set('author', author)
 
   let response
@@ -118,11 +119,59 @@ export async function findBookCover({ title, author }) {
 
   const normalize = (value) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim()
   const { docs = [] } = await response.json()
-  const result = docs.find((book) => book.cover_i && normalize(book.title) === normalize(title)
+  const result = docs.find((book) => (!coverRequired || book.cover_i) && normalize(book.title) === normalize(title)
     && (!author || book.author_name?.some((name) => normalize(name) === normalize(author))))
   if (!result) throw new Error('No matching cover in Open Library. Try a Wikipedia article or a direct cover image URL.')
   return {
-    image: `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false`,
+    image: result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg?default=false` : undefined,
+    year: result.first_publish_year,
+    genres: result.subject ?? [],
     author: result.author_name?.join(', '),
+  }
+}
+
+async function wikidata(ids, props) {
+  const endpoint = new URL('https://www.wikidata.org/w/api.php')
+  endpoint.search = new URLSearchParams({
+    action: 'wbgetentities', ids: ids.join('|'), props, languages: 'en', origin: '*', format: 'json',
+  })
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(8000) })
+  if (!response.ok) throw new Error('Wikidata could not be reached. Try again.')
+  return (await response.json()).entities ?? {}
+}
+
+export async function findEntryDetails({ title, type, year, page, author, match }) {
+  if (type === 'book' && !page) return findBookCover({ title, author, coverRequired: false })
+  let source = match
+  if (!source && page) {
+    const articleTitle = wikipediaTitle(page)
+    if (!articleTitle) throw new Error('Enter an English Wikipedia article URL.')
+    const [item] = await wikipediaPages({ titles: articleTitle })
+    if (!item) throw new Error('No matching Wikipedia article found.')
+    source = article(item)
+  }
+  source ??= await findPoster({ title, type, year, page })
+  if (source.suggestions || !source.entity) return source
+
+  const entities = await wikidata([source.entity], 'claims')
+  const claims = entities[source.entity]?.claims ?? {}
+  const values = (key) => (claims[key] ?? []).filter((claim) => claim.rank !== 'deprecated')
+    .map((claim) => claim.mainsnak.datavalue?.value).filter(Boolean)
+  const dates = type === 'anime' ? [...values('P580'), ...values('P577')] : values('P577')
+  const years = dates.filter((date) => date.precision >= 9)
+    .map((date) => Number(date.time.match(/^\+(\d+)-/)?.[1])).filter((value) => value > 0 && value <= 9999)
+  const genreIds = [...new Set(values('P136').map((value) => value.id).filter(Boolean))].slice(0, 20)
+  const authorIds = type === 'book' ? values('P50').map((value) => value.id).filter(Boolean).slice(0, 5) : []
+  const ids = [...new Set([...genreIds, ...authorIds])]
+  let labels = {}
+  if (ids.length) {
+    try { labels = await wikidata(ids, 'labels') } catch { /* Release year is still available. */ }
+  }
+  const label = (id) => labels[id]?.labels?.en?.value
+  return {
+    ...source,
+    year: years.length ? Math.min(...years) : undefined,
+    genres: genreIds.map(label).filter(Boolean),
+    author: authorIds.map(label).filter(Boolean).join(', '),
   }
 }
