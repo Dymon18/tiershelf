@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { createQueue } from './queue.js'
 import { createViewer } from './viewer.js'
 import { createMailbox } from './mailbox.js'
+import { categoryKey, createCategoryEditor } from './categories.js'
 import { celebrate, enterView, initDecorations } from './effects.js'
 import { defaultMedia, media, mediaSetup } from './media.js'
 import { createPokemonPicker, extraPokemonColumn, pokemonName, pokemonSprite, recommenderIds } from './pokemon.js'
@@ -148,22 +149,29 @@ let dragging = null
 let pending = false
 let pendingChanges = 0
 let frameVersion = 0
+const categoryEditor = createCategoryEditor(db, {
+  getType: () => filter,
+  getNames: categoriesFor,
+  onUpdate(type, previous, renamed) {
+    if (filter === type && activeCategories.delete(categoryKey(previous))) activeCategories.add(categoryKey(renamed))
+    if (editor.open) {
+      selectedCategories = new Set(categoryEditor.labels(typeInput.value, selectedCategories))
+      renderCategoryPicker()
+    }
+    render()
+  },
+})
 
 function status(message) {
   byId('status').textContent = message
 }
 
 function categoriesFor(type) {
-  const items = [...starterCategories[type]]
+  const items = viewerMode ? [] : [...starterCategories[type], ...categoryEditor.preferredLabels(type)]
   for (const entry of entries) {
     if (entry.media_type === type) items.push(...(entry.categories ?? []))
   }
-  const unique = new Map()
-  for (const item of items) {
-    const key = item.toLowerCase()
-    if (!unique.has(key)) unique.set(key, item)
-  }
-  return [...unique.values()].sort((a, b) => a.localeCompare(b))
+  return categoryEditor.labels(type, items).sort((a, b) => a.localeCompare(b))
 }
 
 function movieFacetValues(entry, key) {
@@ -211,9 +219,10 @@ function renderMovieFilters() {
 function renderCategoryFilter() {
   renderMovieFilters()
   const heading = filter === 'book' ? 'Genres' : 'Categories'
+  byId('manage-categories').textContent = 'Edit ' + heading.toLowerCase()
   categoryFilter.hidden = ownerMode && !archiveDetails
   const options = categoriesFor(filter)
-  const available = new Set(options.map((name) => name.toLowerCase()))
+  const available = new Set(options.map(categoryKey))
   for (const key of activeCategories) if (!available.has(key)) activeCategories.delete(key)
   const count = activeCategories.size + (filter === 'movie' ? movieFilterValues.size : 0)
   byId('category-filter-label').textContent = count ? `${heading} (${count})` : heading
@@ -221,7 +230,7 @@ function renderCategoryFilter() {
   filterOptions.replaceChildren()
   let restoreFocus
   for (const name of options) {
-    const key = name.toLowerCase()
+    const key = categoryKey(name)
     const label = document.createElement('label')
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
@@ -252,7 +261,7 @@ function render() {
   const keys = [...activeCategories]
   const matchCategory = (entry) => {
     if (!keys.length) return true
-    const tags = new Set((entry.categories ?? []).map((name) => name.toLowerCase()))
+    const tags = new Set(categoryEditor.labels(entry.media_type, entry.categories ?? []).map(categoryKey))
     return categoryMatch.value === 'any' ? keys.some((key) => tags.has(key)) : keys.every((key) => tags.has(key))
   }
   const visible = shelf.filter((entry) =>
@@ -496,7 +505,7 @@ function openEditor(entry, defaultGrade = 'A') {
   typeInput.value = entry?.media_type ?? filter
   byId('entry-details').hidden = ownerMode && !archiveDetails
   byId('entry-artwork').hidden = ownerMode && !archiveDetails
-  selectedCategories = new Set(entry?.categories ?? [])
+  selectedCategories = new Set(categoryEditor.labels(typeInput.value, entry?.categories ?? []))
   newCategory.value = ''
   yearInput.value = entry?.release_year ?? ''
   wikiInput.value = entry?.wikipedia_url ?? ''
@@ -531,7 +540,7 @@ function renderCategoryPicker() {
   newCategory.placeholder = typeInput.value === 'book' ? 'New genre' : 'New category'
   const options = new Map()
   for (const name of [...categoriesFor(typeInput.value), ...selectedCategories]) {
-    const key = name.toLowerCase()
+    const key = categoryKey(name)
     if (!options.has(key)) options.set(key, name)
   }
   categoryList.replaceChildren()
@@ -539,11 +548,11 @@ function renderCategoryPicker() {
     const label = document.createElement('label')
     const checkbox = document.createElement('input')
     checkbox.type = 'checkbox'
-    checkbox.checked = [...selectedCategories].some((item) => item.toLowerCase() === key)
+    checkbox.checked = [...selectedCategories].some((item) => categoryKey(item) === key)
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) selectedCategories.add(name)
       else for (const item of selectedCategories) {
-        if (item.toLowerCase() === key) selectedCategories.delete(item)
+        if (categoryKey(item) === key) selectedCategories.delete(item)
       }
     })
     label.append(checkbox, name)
@@ -557,8 +566,9 @@ function addCategory() {
     newCategory.focus()
     return
   }
+  const resolved = categoryEditor.label(typeInput.value, name)
   const canonical = [...selectedCategories, ...categoriesFor(typeInput.value)]
-    .find((item) => item.toLowerCase() === name.toLowerCase()) ?? name
+    .find((item) => categoryKey(item) === categoryKey(resolved)) ?? resolved
   selectedCategories.add(canonical)
   newCategory.value = ''
   renderCategoryPicker()
@@ -678,7 +688,8 @@ async function submitEditor(action, focusId) {
 }
 
 typeInput.addEventListener('change', () => {
-  selectedCategories = new Set(typeInput.value === editing?.media_type ? editing.categories ?? [] : [])
+  selectedCategories = new Set(typeInput.value === editing?.media_type
+    ? categoryEditor.labels(typeInput.value, editing.categories ?? []) : [])
   newCategory.value = ''
   resetPosterLookup()
   renderTypeFields()
@@ -852,7 +863,8 @@ autofillButton.addEventListener('click', async () => {
     const knownCategories = categoriesFor(type)
     if (type === 'movie') {
       for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller', 'Pixar', 'Sony Pictures Animation']) {
-        if (!knownCategories.some((item) => normalizeTitle(item) === normalizeTitle(name))) knownCategories.push(name)
+        const label = categoryEditor.label(type, name)
+        if (!knownCategories.some((item) => normalizeTitle(item) === normalizeTitle(label))) knownCategories.push(label)
       }
     }
     const companies = [...(movie.studios ?? []), ...(movie.franchises ?? [])].map(normalizeTitle)
@@ -865,15 +877,15 @@ autofillButton.addEventListener('click', async () => {
       barbie: /\bbarbie\b/,
       'sony pictures animation': /\bsony pictures animation\b/,
     }
-    const categories = knownCategories.filter((name) => {
-      const key = normalizeTitle(name)
+    const categories = knownCategories.filter((name) => categoryEditor.lookupNames(type, name).some((label) => {
+      const key = normalizeTitle(label)
       if (type === 'movie' && movieTags[key]?.test(companies.join(' '))) return true
       if (type === 'movie' && key === 'animation' &&
         /studio ghibli|pixar|sony pictures animation|dreamworks animation|disney animation/.test(companies.join(' '))) return true
       if (type === 'movie' && key === 'barbie' && /^barbie\b/.test(normalizeTitle(details.title ?? title))) return true
       return genres.some((genre) => genre === key || genre === key + ' film' || genre === key + ' novel' ||
         genreAliases[key]?.test(genre))
-    })
+    }))
     const selectedKeys = new Set([...selectedCategories].map(normalizeTitle))
     const additions = categories.filter((name) => !selectedKeys.has(normalizeTitle(name))).slice(0, Math.max(0, 30 - selectedCategories.size))
     if (additions.length) {
@@ -938,7 +950,7 @@ byId('entry-form').addEventListener('submit', (event) => {
       return
     }
     Object.assign(record, {
-      categories: [...selectedCategories], release_year: yearInput.value ? Number(yearInput.value) : null,
+      categories: categoryEditor.labels(record.media_type, selectedCategories), release_year: yearInput.value ? Number(yearInput.value) : null,
       wikipedia_url: page || null, poster_url: image || null,
     })
   }
@@ -988,6 +1000,7 @@ function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   mailbox.setMode(mode, viewerKey)
   queue.setOwner(isOwner, viewerQueue)
   entries = records
+  categoryEditor.setOwner(isOwner && archiveDetails)
   dragging = null
   filter = defaultMedia
   document.body.dataset.media = filter

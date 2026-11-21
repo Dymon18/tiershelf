@@ -51,6 +51,7 @@
             <div class="filter-panel">
               <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
               <button id="clear-categories" class="button" type="button">Clear</button>
+              <button id="manage-categories" class="button" type="button" hidden>Edit categories</button>
               <div id="filter-options" class="category-options"></div>
               <div id="movie-filters"></div>
             </div>
@@ -167,6 +168,21 @@
       <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
     </form>
   </dialog>
+  <dialog id="category-editor" aria-labelledby="category-editor-heading">
+    <form id="category-form">
+      <div class="dialog-heading">
+        <h2 id="category-editor-heading">Edit categories</h2>
+        <button id="close-category-editor" class="icon-button" type="button" aria-label="Close category editor">×</button>
+      </div>
+      <p id="category-editor-description"></p>
+      <label>Current name<select id="category-current" required></select></label>
+      <label>New name<input id="category-new-name" maxlength="48" required autocomplete="off"></label>
+      <p id="category-editor-status" role="status"></p>
+      <p id="category-editor-setup" hidden>Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/015_edit_categories.sql">Supabase category editor migration</a>, then reopen this editor.</p>
+      <div class="form-actions"><button id="save-category" class="button primary" type="submit">Rename category</button></div>
+    </form>
+  </dialog>
+
   <dialog id="queue-editor" aria-labelledby="queue-editor-heading">
     <form id="queue-form">
       <div class="dialog-heading">

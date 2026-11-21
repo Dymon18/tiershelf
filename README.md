@@ -21,6 +21,8 @@ Use **Dymon login** to sign in and save a title. Open the site on another device
 
 For an existing TierShelf database with its mailbox set up, run the [Games and media recommendations migration](supabase/migrations/014_games_and_media_recommendations.sql) to save Games and file non-book recommendations in SideQuest. It preserves existing entries, recommendations, and friend keys.
 
+Run the [category editor migration](supabase/migrations/015_edit_categories.sql) to rename categories and genres in Dymon mode. In MyShelf, choose a media type, open its category filter, and select **Edit categories** or **Edit genres**.
+
 ## Credits
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)

@@ -222,6 +222,10 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 }
 .filter-panel .category-options { margin-top: .75rem; }
 .filter-panel .category-options label { cursor: pointer; }
+#category-form > label { margin-top: .75rem; }
+#category-editor-description, #category-editor-status { color: var(--muted); }
+#category-editor-status:empty { display: none; }
+#category-editor-setup a { color: var(--accent); }
 .card.drop-before { box-shadow: -4px 0 var(--grade); }
 .card.drop-after { box-shadow: 4px 0 var(--grade); }
 
