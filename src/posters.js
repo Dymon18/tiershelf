@@ -22,8 +22,11 @@ export function normalizeTitle(value) {
     .replace(/['’]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
 }
 
-const qualifiers = { movie: 'film', book: 'book', anime: 'TV series' }
-const mediaDescriptions = { movie: /\bfilm\b/i, book: /book|novel|memoir/i, anime: /series|television|anime/i }
+const qualifiers = { movie: 'film', book: 'book', anime: 'TV series', game: 'video game' }
+const mediaDescriptions = {
+  movie: /\bfilm\b/i, book: /book|novel|memoir/i, anime: /series|television|anime/i,
+  game: /video game|computer game|board game|tabletop game/i,
+}
 const ignoredWords = new Set(['a', 'an', 'and', 'of', 'the', 'in', 'to', 'for'])
 
 async function wikipediaPages(parameters) {
@@ -64,9 +67,11 @@ function baseTitle(item) {
 }
 
 function exactArticles(pages, cleaned, type) {
-  return pages.filter((item) =>
-    (normalizeTitle(item.title) === cleaned && (item.thumbnail?.source || mediaDescriptions[type].test(item.description ?? ''))) ||
-    (baseTitle(item) === cleaned && mediaQualifier(item, type)))
+  return pages.filter((item) => {
+    const typed = mediaDescriptions[type].test(item.description ?? '') || mediaQualifier(item, type)
+    return (normalizeTitle(item.title) === cleaned && (typed || (type !== 'game' && item.thumbnail?.source))) ||
+      (baseTitle(item) === cleaned && mediaQualifier(item, type))
+  })
 }
 
 function preferredArticle(exact, year) {
@@ -188,9 +193,9 @@ export async function findArtworkOptions({ title, type, year, page, author }) {
   const versions = pages.filter((item) => {
     const name = normalizeTitle(item.title)
     const description = item.description ?? ''
+    const isGame = mediaDescriptions.game.test(description) || mediaQualifier(item, 'game')
     return item.thumbnail?.source && (name === cleaned || name.startsWith(cleaned + ' ')) &&
-      /manga|book|novel|film|series|television|anime|\bseason\b/i.test(description) &&
-      !/video game/i.test(description)
+      (type === 'game' ? isGame : !isGame && /manga|book|novel|film|series|television|anime|\bseason\b/i.test(description))
   }).sort((a, b) => Number(/ season \d+$/i.test(a.title)) - Number(/ season \d+$/i.test(b.title)))
   const exact = exactArticles(pages, cleaned, type)
   let primaryResult = primary.status === 'fulfilled' ? primary.value : null

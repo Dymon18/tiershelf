@@ -1,5 +1,6 @@
 import { httpsUrl } from './posters.js'
 import { pokemonName, recommenderIds } from './pokemon.js'
+import { media, recommendLabel } from './media.js'
 
 const byId = (id) => document.getElementById(id)
 const validLength = (key) => {
@@ -33,7 +34,7 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
   const art = byId('viewer-title-art')
   const details = byId('viewer-title-details')
   let accessVersion = 0
-  let recommending = false
+  let recommending = null
   button.hidden = !db
 
   function resetKeyOutput() {
@@ -60,12 +61,12 @@ export function createViewer(db, { mode, openSnapshot, exit }) {
     resetKeyOutput()
   }
 
-  function showUnlock(forRecommendation = false) {
+  function showUnlock(forRecommendation = null) {
     if (!db || mode() !== 'demo' || dialog.open) return
     recommending = forRecommendation
-    byId('viewer-heading').textContent = recommending ? 'Recommend me a book!' : 'Friend mode'
+    byId('viewer-heading').textContent = recommending ? recommendLabel(recommending) : 'Friend mode'
     byId('viewer-description').textContent = recommending
-      ? 'Only friends can recommend books. Do you have a friend key?'
+      ? 'Only friends can recommend ' + media[recommending].label.toLowerCase() + '. Do you have a friend key?'
       : 'Enter the key Dymon shared with you to view MyShelf and QuestLog.'
     unlock.textContent = recommending ? 'Unlock recommendations' : 'Enter Friend mode'
     state.textContent = ''

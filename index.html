@@ -3,13 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="A personal tier list for movies, books, and series.">
+  <meta name="description" content="A personal tier list for books, movies, series, and games.">
   <meta name="theme-color" content="#151718">
   <title>TierShelf</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
 </head>
-<body data-mode="demo">
+<body data-mode="demo" data-media="book">
   <div class="mode-pattern" aria-hidden="true"></div>
+  <div id="media-patterns" aria-hidden="true"></div>
   <header class="topbar">
     <div class="frame nav">
       <a class="brand" href="./"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="brand-name">TierShelf</span></a>
@@ -33,16 +34,17 @@
           <p>Completed &amp; Rated</p>
           <button id="add-button" class="button primary"><span aria-hidden="true">+</span> Add title</button>
         </div>
-        <figure class="cookie-banner">
+        <button id="cookie-surprise" class="cookie-banner" type="button" aria-label="Drop a cookie">
           <img src="/danisa-cookie-tier-list.webp" alt="Danisa butter cookie tier list, with chocolate chip in S tier and spools of sewing thread in E tier" width="761" height="790">
-        </figure>
+        </button>
       </section>
       <section aria-label="MyShelf tiers">
         <div class="toolbar">
           <div class="filters" role="group" aria-label="Filter by media type">
-            <button data-filter="movie" aria-pressed="true">Movies</button>
-            <button data-filter="book" aria-pressed="false">Books</button>
+            <button data-filter="book" aria-pressed="true">Books</button>
+            <button data-filter="movie" aria-pressed="false">Movies</button>
             <button data-filter="anime" aria-pressed="false">Series</button>
+            <button data-filter="game" aria-pressed="false">Games</button>
           </div>
           <details id="category-filter" class="category-filter">
             <summary id="category-filter-label">Categories</summary>
@@ -113,7 +115,7 @@
         <button id="match-poster-title" type="button" class="button" hidden>Match title</button>
       </div>
       <div class="fields">
-        <label>Type<select id="entry-type"><option value="movie">Movie</option><option value="book">Book</option><option value="anime">Series</option></select></label>
+        <label>Type<select id="entry-type"><option value="book">Book</option><option value="movie">Movie</option><option value="anime">Series</option><option value="game">Game</option></select></label>
         <label>Tier<select id="entry-grade"></select></label>
       </div>
       <fieldset id="entry-artwork">
@@ -267,9 +269,10 @@
       <button id="close-recommendation" class="icon-button" type="button" aria-label="Close recommendation mailbox">×</button>
     </div>
     <form id="recommendation-form">
-      <p>Only Dymon can read your message. If your book goes into SideQuest, Dymon will credit you with a Pokémon alias.</p>
-      <label>Book title<input id="recommendation-title" maxlength="200" required></label>
-      <label>Author (optional)<input id="recommendation-author" maxlength="200"></label>
+      <p>Only Dymon can read your message. If your recommendation goes into SideQuest, Dymon will credit you with a Pokémon alias.</p>
+      <label>Type<select id="recommendation-type"><option value="book">Book</option><option value="movie">Movie</option><option value="anime">Series</option><option value="game">Game</option></select></label>
+      <label><span id="recommendation-title-label">Book title</span><input id="recommendation-title" maxlength="200" required></label>
+      <label id="recommendation-author-field">Author (optional)<input id="recommendation-author" maxlength="200"></label>
       <label>Your name, alias or nickname<input id="recommendation-sender" maxlength="100" required></label>
       <label>Why do you recommend it? (optional)<textarea id="recommendation-note" rows="3" maxlength="1000"></textarea></label>
       <div class="form-actions">

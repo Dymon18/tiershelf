@@ -4,6 +4,8 @@ import { config } from './config.js'
 import { createQueue } from './queue.js'
 import { createViewer } from './viewer.js'
 import { createMailbox } from './mailbox.js'
+import { celebrate, enterView, initDecorations } from './effects.js'
+import { defaultMedia, media, mediaSetup } from './media.js'
 import { createPokemonPicker, extraPokemonColumn, pokemonName, pokemonSprite, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
@@ -11,11 +13,11 @@ const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
   D: '#a6dbbc', E: '#a6cde8', F: '#c4b9ed',
 }
-const types = { movie: 'Movie', book: 'Book', anime: 'Series' }
 const starterCategories = {
   movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Animation', 'Musical', 'Action'],
   book: ['Fantasy', 'Sci-fi', 'Mystery', 'Romance', 'Nonfiction'],
   anime: ['Animation', 'Anime', 'K-drama', 'TV Show'],
+  game: ['Action', 'Adventure', 'RPG', 'Puzzle', 'Simulation', 'Strategy', 'Co-op'],
 }
 const basicColumns = 'id,title,media_type,grade'
 const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
@@ -39,7 +41,7 @@ const queue = createQueue(db, (entry) => openEditor({
   poster_url: entry.artwork_url, source_queue_id: entry.id,
   recommender_pokemon_id: entry.source === 'recommended' ? entry.pokemon_id : null,
   extra_pokemon_ids: entry.source === 'recommended' ? entry.extra_pokemon_ids : [],
-}))
+}), (type) => mailbox.setMedia(type ?? filter))
 
 const byId = (id) => document.getElementById(id)
 const board = byId('board')
@@ -99,7 +101,7 @@ const demo = [
   },
 ]
 let entries = demo
-let filter = 'movie'
+let filter = defaultMedia
 const activeCategories = new Set()
 let canRank = true
 const movieFilterValues = new Map()
@@ -132,11 +134,14 @@ const viewer = createViewer(db, {
   mode: () => ownerMode ? 'dymon' : viewerMode ? 'viewer' : 'demo',
   openSnapshot: ({ shelf, questlog }, key, recommending) => {
     setMode(false, shelf, questlog, key)
-    if (recommending) mailbox.open()
+    if (recommending) {
+      setMediaFilter(recommending)
+      mailbox.open(recommending)
+    }
   },
   exit: () => setMode(false, demo),
 })
-const mailbox = createMailbox(db, queue.openRecommendation, () => viewer.showUnlock(true))
+const mailbox = createMailbox(db, queue.openRecommendation, (type) => viewer.showUnlock(type))
 let editing = null
 let editorReturn = null
 let dragging = null
@@ -409,7 +414,7 @@ function createCard(entry) {
   const name = document.createElement('strong')
   name.textContent = entry.title
   const type = document.createElement('span')
-  type.textContent = entry.author || types[entry.media_type]
+  type.textContent = entry.author || media[entry.media_type]?.name || ''
   card.append(name, type)
   const titleWithYear = entry.release_year ? `${entry.title} (${entry.release_year})` : entry.title
   card.title = entry.author ? `${titleWithYear} by ${entry.author}` : titleWithYear
@@ -602,6 +607,7 @@ async function save(record) {
         : db.from('tiershelf_entries').insert(fields)
       const { data, error } = await request.select(archiveColumns).single()
       if (error?.code === '23505' && source_queue_id) throw new Error('This entry is already in MyShelf. Refresh to see it.')
+      if (error?.code === '23514' && fields.media_type === 'game') throw new Error(mediaSetup)
       if (error) throw new Error('Could not save this title. Try again.')
       result = data
     } finally {
@@ -615,6 +621,7 @@ async function save(record) {
   else target[index] = result
   render()
   status(`Saved ${record.title} in tier ${record.grade}.`)
+  return !id && record.media_type === 'book'
 }
 
 async function remove(entry) {
@@ -649,8 +656,9 @@ async function submitEditor(action, focusId) {
   editorStatus.textContent = ''
   try {
     const returnTo = editorReturn
-    await action()
+    const addedBook = await action()
     editor.close()
+    if (addedBook) celebrate('shelf')
     const editedCard = focusId && board.querySelector(`[data-entry="${CSS.escape(focusId)}"]`)
     const tierAdd = byId('tier-' + returnTo.grade)?.parentElement.querySelector('.add-tier')
     const focusTarget = editedCard || tierAdd || byId('add-button')
@@ -948,13 +956,19 @@ byId('entry-form').addEventListener('submit', (event) => {
   submitEditor(() => save(record), editing?.id)
 })
 deleteButton.addEventListener('click', () => submitEditor(() => remove(editing)))
-filters.forEach((button) => button.addEventListener('click', () => {
-  filter = button.dataset.filter
+function setMediaFilter(type, animate = false) {
+  filter = type
+  document.body.dataset.media = type
+  if (document.body.dataset.view !== 'queue') mailbox.setMedia(type)
   activeCategories.clear()
   movieFilterValues.clear()
   categoryFilter.open = false
-  filters.forEach((item) => item.setAttribute('aria-pressed', String(item === button)))
+  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === type)))
   render()
+  if (animate) enterView(board)
+}
+filters.forEach((button) => button.addEventListener('click', () => {
+  if (filter !== button.dataset.filter) setMediaFilter(button.dataset.filter, true)
 }))
 search.addEventListener('input', render)
 categoryMatch.addEventListener('change', render)
@@ -975,7 +989,9 @@ function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   queue.setOwner(isOwner, viewerQueue)
   entries = records
   dragging = null
-  filter = 'movie'
+  filter = defaultMedia
+  document.body.dataset.media = filter
+  if (document.body.dataset.view !== 'queue') mailbox.setMedia(filter)
   activeCategories.clear()
   movieFilterValues.clear()
   categoryFilter.open = false
@@ -1018,6 +1034,7 @@ githubButton.addEventListener('click', async () => {
   }
 })
 
+initDecorations()
 render()
 if (db) {
   let authVersion = 0

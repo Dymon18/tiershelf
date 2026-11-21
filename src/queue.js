@@ -2,12 +2,9 @@ import { createPokemonPicker, ditto, extraPokemonColumn, pokemonName, pokemonSpr
   populatePokemonOptions, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findBookOptions, httpsUrl, normalizeTitle } from './posters.js'
 import { readingTags, suggestBookTags } from './reading-tags.js'
+import { celebrate, enterView } from './effects.js'
+import { defaultMedia, media, mediaKeys, mediaKind, mediaSetup } from './media.js'
 
-const mediaTypes = [
-  { key: 'movie', label: 'Movies' },
-  { key: 'book', label: 'Books' },
-  { key: 'anime', label: 'Series' },
-]
 const sources = [
   { key: 'recommended', label: 'SideQuest', description: 'Recommendations', add: 'Add to SideQuest', icon: '🧭' },
   { key: 'self', label: 'BackLog', description: 'Personal hunts', add: 'Add to BackLog', icon: '🪵' },
@@ -27,7 +24,7 @@ function cell(tag, value) {
   return node
 }
 
-export function createQueue(db, openTierEditor) {
+export function createQueue(db, openTierEditor, onMedia) {
   const nav = byId('archive-nav')
   const archive = byId('archive-view')
   const view = byId('queue-view')
@@ -75,7 +72,8 @@ export function createQueue(db, openTierEditor) {
   let promoted = new Set()
   let canPromote = false
   let dragging = null
-  const expanded = new Set(mediaTypes.map(({ key }) => key))
+  const expanded = new Set(mediaKeys)
+  let queueMedia = defaultMedia
   let lookupVersion = 0
   let tagLookupVersion = 0
   let matches = []
@@ -91,7 +89,14 @@ export function createQueue(db, openTierEditor) {
   let activeEntry = null
   let trigger = null
 
+  function selectMedia(type) {
+    queueMedia = type
+    document.body.dataset.queueMedia = type
+    onMedia(type)
+  }
+
   function switchView(showQueue, remember = false) {
+    const switched = archive.hidden !== showQueue
     if (remember) {
       const url = new URL(location.href)
       if (showQueue) url.hash = queueHash
@@ -103,13 +108,16 @@ export function createQueue(db, openTierEditor) {
     archive.hidden = showQueue
     archiveButton.setAttribute('aria-pressed', String(!showQueue))
     queueButton.setAttribute('aria-pressed', String(showQueue))
+    if (showQueue) selectMedia(queueMedia)
+    else onMedia(null)
+    if (switched) enterView(showQueue ? view : archive)
   }
 
   function render() {
     board.replaceChildren()
     board.dataset.compact = String(compact)
-    const visibleTypes = compact ? mediaTypes.filter(({ key }) => key === 'book') : mediaTypes
-    for (const { key, label } of visibleTypes) {
+    const visibleTypes = compact ? [defaultMedia] : mediaKeys
+    for (const key of visibleTypes) {
       const column = document.createElement('section')
       column.className = 'queue-column'
       column.dataset.queueType = key
@@ -122,7 +130,7 @@ export function createQueue(db, openTierEditor) {
       toggle.setAttribute('aria-controls', `queue-${key}-body`)
       const chevron = cell('span', '⌄')
       chevron.setAttribute('aria-hidden', 'true')
-      toggle.append(label, chevron)
+      toggle.append(media[key].label, chevron)
       header.append(toggle)
 
       const body = document.createElement('div')
@@ -139,6 +147,7 @@ export function createQueue(db, openTierEditor) {
       column.append(header, body)
 
       toggle.addEventListener('click', () => {
+        selectMedia(key)
         if (expanded.has(key)) expanded.delete(key)
         else expanded.add(key)
         const open = expanded.has(key)
@@ -586,6 +595,7 @@ export function createQueue(db, openTierEditor) {
       else entries[index] = data
       render()
       dialog.close()
+      if (!removeEntry && !entry.id && entry.media_type === 'book' && entry.source === 'recommended') celebrate('sidequest')
       const returnButton = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === data.id)
         ?? board.querySelector(`[data-queue-add="${entry.media_type}-${entry.source}"]`)
       returnButton?.focus({ preventScroll: true })
@@ -595,7 +605,8 @@ export function createQueue(db, openTierEditor) {
     } catch (error) {
       if (session === version) formStatus.textContent = entry.source_recommendation_id && !entry.id && error.code === '23505'
         ? 'This recommendation is already in SideQuest.'
-        : 'Could not save that change. Try again.'
+        : error.code === '23514' && (entry.media_type === 'game' || (entry.source_recommendation_id && entry.media_type !== 'book'))
+          ? mediaSetup : 'Could not save that change. Try again.'
     } finally {
       if (session === version) {
         pending = false
@@ -661,7 +672,10 @@ export function createQueue(db, openTierEditor) {
   })
   compactButton.addEventListener('click', () => {
     compact = !compact
-    if (compact) expanded.add('book')
+    if (compact) {
+      expanded.add(defaultMedia)
+      selectMedia(defaultMedia)
+    }
     compactButton.setAttribute('aria-pressed', String(compact))
     if (loaded) render()
   })
@@ -671,14 +685,20 @@ export function createQueue(db, openTierEditor) {
       const session = version
       await load()
       if (session !== version || !owner || !loaded || !columns.includes(readingColumns)) return false
+      const kind = mediaKind(recommendation.media_type)
       const opened = openEditor({
-        title: recommendation.title, author: recommendation.author, media_type: 'book', source: 'recommended',
+        title: recommendation.title, author: recommendation.author, media_type: kind, source: 'recommended',
         source_recommendation_id: recommendation.id,
       }, byId('recommendation-mailbox'))
       if (opened) {
         readingFilter.value = ''
         sourceFilters.get('recommended').checked = true
-        expanded.add('book')
+        if (compact && kind !== 'book') {
+          compact = false
+          compactButton.setAttribute('aria-pressed', 'false')
+        }
+        queueMedia = kind
+        expanded.add(kind)
         switchView(true, true)
         render()
       }
@@ -701,6 +721,7 @@ export function createQueue(db, openTierEditor) {
       if (owner === isOwner && viewer === isViewer) return
       owner = isOwner
       viewer = isViewer
+      queueMedia = defaultMedia
       version++
       entries = viewerEntries ?? []
       loadRequest = null

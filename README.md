@@ -1,6 +1,6 @@
 # TierShelf
 
-A personal tier list for movies, books, and anime. Demo changes live in memory and reset on refresh. Dymon mode uses GitHub sign-in and saves private titles in Supabase.
+A personal tier list for books, movies, series, and games. Demo changes live in memory and reset on refresh. Dymon mode uses GitHub sign-in and saves private titles in Supabase.
 
 ## Run locally
 
@@ -19,6 +19,7 @@ Install Node.js 24, then run `npm ci` and `npm run dev`. Run `npm run build` to 
 
 Use **Dymon login** to sign in and save a title. Open the site on another device and sign in with the same GitHub account to check that the title appears.
 
+For an existing TierShelf database with its mailbox set up, run the [Games and media recommendations migration](supabase/migrations/014_games_and_media_recommendations.sql) to save Games and file non-book recommendations in SideQuest. It preserves existing entries, recommendations, and friend keys.
 
 ## Credits
 

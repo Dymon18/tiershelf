@@ -1,5 +1,9 @@
+import { celebrate } from './effects.js'
+import { defaultMedia, legacyMediaPrefix, media, mediaKind, readRecommendation, recommendLabel } from './media.js'
+
 const byId = (id) => document.getElementById(id)
 const pageSize = 100
+const inboxColumns = 'id,title,sender,author,note,created_at,tiershelf_queue!tiershelf_queue_source_recommendation_id_fkey(id)'
 
 export function createMailbox(db, openRecommendation, askForKey) {
   const button = byId('recommendation-mailbox')
@@ -8,6 +12,7 @@ export function createMailbox(db, openRecommendation, askForKey) {
   const close = byId('close-recommendation')
   const form = byId('recommendation-form')
   const title = byId('recommendation-title')
+  const type = byId('recommendation-type')
   const author = byId('recommendation-author')
   const sender = byId('recommendation-sender')
   const note = byId('recommendation-note')
@@ -18,18 +23,36 @@ export function createMailbox(db, openRecommendation, askForKey) {
   const list = byId('recommendation-list')
   let mode = 'demo'
   let viewerKey = null
+  let activeMedia = defaultMedia
   let version = 0
   button.hidden = !db
 
   function setBusy(busy) {
     close.disabled = busy
     send.disabled = busy
+    type.disabled = busy
     for (const action of list.querySelectorAll('button')) action.disabled = busy
   }
+
+  function renderType() {
+    const kind = mediaKind(type.value)
+    heading.textContent = recommendLabel(kind)
+    byId('recommendation-title-label').textContent = media[kind].name + ' title'
+    byId('recommendation-author-field').hidden = kind !== 'book'
+    author.disabled = kind !== 'book'
+  }
+
+  function setMedia(kind) {
+    activeMedia = mediaKind(kind)
+    button.textContent = mode === 'dymon' ? 'Recommendation mailbox' : recommendLabel(activeMedia)
+  }
+
+  type.addEventListener('change', renderType)
 
   function clear() {
     version++
     form.reset()
+    dialog.querySelector('.celebration-mailbox')?.remove()
     list.replaceChildren()
     list.hidden = true
     setup.hidden = true
@@ -73,6 +96,7 @@ export function createMailbox(db, openRecommendation, askForKey) {
     name.textContent = recommendation.title
     const details = document.createElement('p')
     details.textContent = [
+      media[recommendation.media_type].name,
       recommendation.author,
       'From ' + recommendation.sender,
       new Date(recommendation.created_at).toLocaleDateString(),
@@ -129,17 +153,23 @@ export function createMailbox(db, openRecommendation, askForKey) {
     status.textContent = 'Loading recommendations…'
     try {
       const rows = []
+      let columns = inboxColumns + ',media_type'
+      const fetchPage = (offset) => db.from('tiershelf_recommendations').select(columns)
+        .order('created_at', { ascending: false }).order('id').range(offset, offset + pageSize - 1)
       for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await db.from('tiershelf_recommendations')
-          .select('id,title,sender,author,note,created_at,tiershelf_queue!tiershelf_queue_source_recommendation_id_fkey(id)')
-          .order('created_at', { ascending: false }).order('id')
-          .range(offset, offset + pageSize - 1)
+        let result = await fetchPage(offset)
         if (request !== version) return
+        if (offset === 0 && ['42703', 'PGRST204'].includes(result.error?.code)) {
+          columns = inboxColumns
+          result = await fetchPage(offset)
+        }
+        if (request !== version) return
+        const { data, error } = result
         if (error) throw error
         rows.push(...data)
         if (data.length < pageSize) break
       }
-      list.append(...rows.map((row) => renderRecommendation(row, request)))
+      list.append(...rows.map((row) => renderRecommendation(readRecommendation(row), request)))
       list.hidden = !rows.length
       status.textContent = rows.length ? '' : 'No recommendations yet.'
     } catch (error) {
@@ -149,30 +179,35 @@ export function createMailbox(db, openRecommendation, askForKey) {
     }
   }
 
-  function open() {
+  function open(kind = activeMedia) {
     if (!db || dialog.open) return
     if (mode === 'demo') {
-      askForKey()
+      askForKey(kind)
       return
     }
     clear()
     const owner = mode === 'dymon'
-    heading.textContent = owner ? 'Recommendation mailbox' : 'Recommend a book'
+    if (owner) heading.textContent = 'Recommendation mailbox'
+    else {
+      type.value = mediaKind(kind)
+      renderType()
+    }
     form.hidden = owner
     dialog.showModal()
     if (owner) loadInbox(version)
     else title.focus()
   }
-  button.addEventListener('click', open)
+  button.addEventListener('click', () => open())
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     if (mode !== 'viewer' || !viewerKey || send.disabled) return
-    const book = title.value.trim()
+    const nameOfWork = title.value.trim()
     const name = sender.value.trim()
-    if (!book || !name) {
-      status.textContent = 'Enter the book title and your name, alias or nickname.'
-      const missingInput = book ? sender : title
+    const kind = mediaKind(type.value)
+    if (!nameOfWork || !name) {
+      status.textContent = 'Enter the ' + media[kind].name.toLowerCase() + ' title and your name, alias or nickname.'
+      const missingInput = nameOfWork ? sender : title
       missingInput.focus()
       return
     }
@@ -180,21 +215,34 @@ export function createMailbox(db, openRecommendation, askForKey) {
     setBusy(true)
     status.textContent = 'Sending recommendation…'
     try {
-      const { data, error } = await db.rpc('tiershelf_submit_recommendation', {
+      const message = {
         access_key: viewerKey,
-        book_title: book,
         recommender_name: name,
-        book_author: author.value.trim() || null,
         recommendation_note: note.value.trim() || null,
+      }
+      const sendLegacy = (bookAuthor) => db.rpc('tiershelf_submit_recommendation', {
+        ...message, book_title: nameOfWork, book_author: bookAuthor,
       })
+      let result = kind === 'book' ? await sendLegacy(author.value.trim() || null)
+        : await db.rpc('tiershelf_submit_media_recommendation', {
+          ...message, media_kind: kind, media_title: nameOfWork, media_author: null,
+        })
       if (request !== version) return
+      if (kind !== 'book' && ['PGRST202', '42883'].includes(result.error?.code)) {
+        result = await sendLegacy(legacyMediaPrefix + kind)
+      }
+      if (request !== version) return
+      const { data, error } = result
       if (error) throw error
       if (!data) {
         status.textContent = 'This friend key is no longer active. Ask Dymon for the current key.'
         return
       }
       form.reset()
+      type.value = kind
+      renderType()
       status.textContent = 'Recommendation sent. Thanks!'
+      celebrate('mailbox', dialog)
       title.focus()
     } catch (error) {
       if (request !== version) return
@@ -215,11 +263,13 @@ export function createMailbox(db, openRecommendation, askForKey) {
 
   return {
     open,
+    setMedia,
     setMode(current, key) {
       mode = current
       viewerKey = current === 'viewer' ? key : null
       if (dialog.open) dialog.close()
       clear()
+      setMedia(activeMedia)
     },
   }
 }
