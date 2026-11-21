@@ -245,6 +245,22 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 }
 .filter-panel .category-options { margin-top: .75rem; }
 .filter-panel .category-options label { cursor: pointer; }
+.category-match { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0 0 .6rem; padding: 0; border: 0; }
+.category-match legend { margin-bottom: .35rem; padding: 0; font-size: .875rem; }
+.category-match label { position: relative; cursor: pointer; }
+.category-match input { position: absolute; opacity: 0; }
+.category-match span {
+  display: block;
+  padding: .4rem .65rem;
+  border: 1px solid #444a4a;
+  border-radius: 7px;
+  background: #242829;
+  color: #f6f5f1;
+  font-size: .875rem;
+  font-weight: 650;
+}
+.category-match input:checked + span { background: var(--accent); border-color: var(--accent); color: #172010; }
+.category-match input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 #category-form > label { margin-top: .75rem; }
 #category-editor-description, #category-editor-status { color: var(--muted); }
 #category-editor-status:empty { display: none; }

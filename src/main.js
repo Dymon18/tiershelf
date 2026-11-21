@@ -71,6 +71,7 @@ const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
 const filterOptions = byId('filter-options')
 const categoryMatch = byId('category-match')
+const matchAllInput = byId('category-match-all')
 const categoryList = byId('entry-categories')
 const newCategory = byId('new-category')
 const yearInput = byId('entry-year')
@@ -328,7 +329,7 @@ function render() {
   const matchCategory = (entry) => {
     if (!keys.length) return true
     const tags = new Set(categoryEditor.labels(entry.media_type, entry.categories ?? []).map(categoryKey))
-    return categoryMatch.value === 'any' ? keys.some((key) => tags.has(key)) : keys.every((key) => tags.has(key))
+    return matchAllInput.checked ? keys.every((key) => tags.has(key)) : keys.some((key) => tags.has(key))
   }
   const visible = shelf.filter((entry) =>
     matchCategory(entry) &&
@@ -1037,7 +1038,7 @@ function rememberShelfView() {
     media: filter,
     categories: [...activeCategories],
     movieFacets: Object.fromEntries(movieFilterValues),
-    categoryMatch: categoryMatch.value,
+    matchAllCategories: matchAllInput.checked,
     search: search.value,
     filtersOpen: categoryFilter.open,
   })
@@ -1070,7 +1071,7 @@ function restoreShelfView() {
     }
   }
   categoryFilter.open = view.filtersOpen === true
-  categoryMatch.value = view.categoryMatch === 'any' ? 'any' : 'all'
+  byId(view.matchAllCategories === true ? 'category-match-all' : 'category-match-any').checked = true
   search.value = typeof view.search === 'string' ? view.search : ''
 }
 

@@ -49,7 +49,11 @@
           <details id="category-filter" class="category-filter">
             <summary id="category-filter-label">Categories</summary>
             <div class="filter-panel">
-              <label>Match <select id="category-match"><option value="all">All selected</option><option value="any">Any selected</option></select></label>
+              <fieldset id="category-match" class="category-match">
+                <legend>Match selected</legend>
+                <label><input id="category-match-any" type="radio" name="category-match" value="any" checked><span>Any (OR)</span></label>
+                <label><input id="category-match-all" type="radio" name="category-match" value="all"><span>All (AND)</span></label>
+              </fieldset>
               <button id="clear-categories" class="button" type="button">Clear</button>
               <button id="manage-categories" class="button" type="button" hidden>Edit categories</button>
               <div id="filter-options" class="category-options"></div>
