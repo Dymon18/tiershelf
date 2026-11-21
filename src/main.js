@@ -556,8 +556,10 @@ function openEditor(entry, defaultGrade = 'A') {
     input.value = key === 'runtime' ? value ?? '' : (Array.isArray(value) ? value.join(', ') : '')
   }
   typeInput.value = entry?.media_type ?? filter
-  byId('entry-details').hidden = ownerMode && !archiveDetails
-  byId('entry-artwork').hidden = ownerMode && !archiveDetails
+  const hideDetails = ownerMode && !archiveDetails
+  byId('entry-details').hidden = hideDetails
+  byId('entry-artwork').hidden = hideDetails
+  autofillButton.hidden = hideDetails
   selectedCategories = new Set(categoryEditor.labels(typeInput.value, entry?.categories ?? []))
   newCategory.value = ''
   yearInput.value = entry?.release_year ?? ''

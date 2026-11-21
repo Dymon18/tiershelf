@@ -139,8 +139,6 @@
       </fieldset>
       <fieldset id="entry-details">
         <legend>Details</legend>
-        <button id="autofill-details" class="button" type="button">Autofill details</button>
-        <p id="autofill-status" role="status"></p>
         <label id="entry-author-field" hidden>Author <input id="entry-author" maxlength="200" autocomplete="off"></label>
         <label>Release year <input id="entry-year" type="number" min="1" max="9999" step="1"></label>
         <fieldset id="movie-details" class="category-picker" hidden>
@@ -164,8 +162,15 @@
         </div>
         <div id="entry-recommender-preview" class="queue-alias-preview"></div>
       </div>
+      <p id="autofill-status" role="status"></p>
       <p id="editor-status" role="status"></p>
-      <div class="form-actions"><button type="button" id="delete-button" class="button danger" hidden>Delete</button><button type="submit" id="save-button" class="button primary">Save title</button></div>
+      <div class="form-actions entry-actions">
+        <button type="button" id="delete-button" class="button danger" hidden>Delete</button>
+        <div class="entry-save-actions">
+          <button id="autofill-details" class="button" type="button">Autofill details</button>
+          <button type="submit" id="save-button" class="button primary">Save title</button>
+        </div>
+      </div>
     </form>
   </dialog>
   <dialog id="category-editor" aria-labelledby="category-editor-heading">
