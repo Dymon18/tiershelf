@@ -518,6 +518,13 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 .queue-row-actions { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .35rem; }
 .queue-row-actions .button { min-height: 26px; padding: .2rem .4rem; font-size: .75rem; white-space: normal; }
 .queue-row-actions .button:disabled { cursor: default; }
+.queue-row-actions > span { align-self: center; color: var(--muted); font-size: .75rem; }
+.queue-placement[open] { flex-basis: 100%; }
+.queue-placement summary { width: fit-content; cursor: pointer; }
+.queue-placement-options { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: .3rem; }
+.queue-placement-options button { text-align: left; }
+.queue-placement-feedback:empty { display: none; }
+.queue-placement .queue-placement-feedback { margin: .35rem 0 0; color: #ffc3ba; font-size: .75rem; }
 .queue-entry[draggable="true"] { cursor: grab; }
 .queue-drop-before { box-shadow: -3px 0 var(--queue-accent); }
 .queue-drop-after { box-shadow: 3px 0 var(--queue-accent); }

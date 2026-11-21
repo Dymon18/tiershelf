@@ -17,19 +17,23 @@ const artworkColumns = basicColumns + ',artwork_url'
 const priorityColumn = ',queue_position'
 const readingColumns = ',reading_tags,source_recommendation_id'
 const bookColumns = ',reading_status,custom_reading_tags,synopsis_url'
+const bucketColumn = ',queue_bucket'
 const standardColumns = artworkColumns + priorityColumn
-const fullColumns = standardColumns + readingColumns + extraPokemonColumn + bookColumns
+const bookWorkflowColumns = standardColumns + readingColumns + extraPokemonColumn + bookColumns
+const fullColumns = bookWorkflowColumns + bucketColumn
 const requestNeeded = 'request-needed'
+const inProgress = 'in-progress'
 const nextUp = 'next-up'
 const nextUpLimit = 3
 const readingStatuses = new Map([
-  ['in-progress', 'In progress'],
+  [inProgress, 'In progress'],
   [nextUp, 'Next up'],
   ['holding', 'Holding'],
   ['waiting-on-library', 'Waiting on library'],
   [requestNeeded, 'Request needed'],
 ])
-const isSideQuestBook = (entry) => entry.media_type === 'book' && entry.source === 'recommended'
+const queueBucketOf = (entry) => entry.queue_bucket ?? entry.source
+const isSideQuestBook = (entry) => entry.media_type === 'book' && queueBucketOf(entry) === 'recommended'
 const readingStatusOf = (entry) => readingStatuses.has(entry.reading_status) ? entry.reading_status : requestNeeded
 const customTagId = (label) => 'custom:' + categoryKey(label)
 const tagIds = (entry) => [...(entry.reading_tags ?? []), ...(entry.custom_reading_tags ?? []).map(customTagId)]
@@ -252,7 +256,7 @@ export function createQueue(db, openTierEditor, onMedia) {
     bucket.setAttribute('aria-labelledby', heading.id)
     bucket.append(heading, cell('p', source.description))
 
-    const entriesInBucket = group.filter((entry) => entry.source === source.key)
+    const entriesInBucket = group.filter((entry) => queueBucketOf(entry) === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
     const sideQuestBooks = type === 'book' && source.key === 'recommended'
     const tag = type === 'book' && !byId('queue-reading-filter-field').hidden ? readingTag : ''
@@ -393,21 +397,14 @@ export function createQueue(db, openTierEditor, onMedia) {
       actions.append(button)
     }
 
-    const promote = cell('button', promoted.has(entry.id) ? 'In MyShelf' : 'Promote to MyShelf')
-    promote.type = 'button'
-    promote.className = 'button'
-    promote.dataset.queuePromote = entry.id
-    promote.disabled = !canPromote || promoted.has(entry.id)
-    promote.addEventListener('click', () => {
-      if (!owner || pending || !canPromote || promoted.has(entry.id)) return
-      openTierEditor(entry)
-    })
-    actions.append(promote)
+    const placement = renderPlacementMenu(entry)
+    if (placement) actions.append(placement)
+    if (promoted.has(entry.id)) actions.append(cell('span', 'In MyShelf'))
 
     if (!canRank || entriesInBucket.length < 2) return actions
     row.draggable = true
     row.addEventListener('dragstart', (event) => {
-      if (pending || event.target.closest('button')) { event.preventDefault(); return }
+      if (pending || event.target.closest('button, summary, a')) { event.preventDefault(); return }
       dragging = entry
       event.dataTransfer.setData('text/plain', entry.id)
       event.dataTransfer.effectAllowed = 'move'
@@ -445,6 +442,119 @@ export function createQueue(db, openTierEditor, onMedia) {
     return actions
   }
 
+  function renderPlacementMenu(entry) {
+    const book = entry.media_type === 'book'
+    const bucket = queueBucketOf(entry)
+    const canChangeBucket = columns.includes(bucketColumn)
+    const currentStatus = readingStatusOf(entry)
+    const menu = document.createElement('details')
+    menu.className = 'queue-placement'
+    const summary = cell('summary', 'Move to…')
+    summary.className = 'button'
+    summary.setAttribute('aria-label', `Move ${entry.title} to another list`)
+    const options = document.createElement('div')
+    options.className = 'queue-placement-options'
+    const feedback = cell('p', '')
+    feedback.className = 'queue-placement-feedback'
+    feedback.setAttribute('role', 'status')
+    menu.append(summary, options, feedback)
+
+    function addAction(label, action) {
+      const button = cell('button', label)
+      button.type = 'button'
+      button.className = 'button'
+      button.addEventListener('click', () => action(button))
+      options.append(button)
+      return button
+    }
+
+    function addDestination(destination, destinationStatus, label) {
+      const button = addAction(label, (trigger) => moveToPlacement(entry, destination, destinationStatus, label, trigger, feedback))
+      button.dataset.queueDestination = destinationStatus ?? destination
+    }
+
+    if (book && hasBookWorkflow()) {
+      for (const [id, label] of readingStatuses) {
+        const available = bucket === 'recommended' ? id !== currentStatus
+          : canChangeBucket && id !== inProgress && id !== requestNeeded
+        if (available) addDestination('recommended', id, label)
+      }
+    } else if (!book && canChangeBucket && bucket === 'self') addDestination('recommended', null, 'SideQuest')
+    if (canChangeBucket && bucket === 'recommended') addDestination('self', null, 'BackLog')
+
+    const readyForShelf = !book || (isSideQuestBook(entry) && currentStatus === inProgress)
+    if (readyForShelf && canPromote && !promoted.has(entry.id)) {
+      const promote = addAction('Promote to MyShelf', () => {
+        if (!owner || pending || !canPromote || promoted.has(entry.id)) return
+        menu.open = false
+        openTierEditor(entry)
+      })
+      promote.dataset.queuePromote = entry.id
+    }
+    return options.childElementCount ? menu : null
+  }
+
+  const nextUpFull = (id) => entries.filter((entry) => entry.id !== id && entry.reading_status === nextUp).length >= nextUpLimit
+  const nextUpMessage = 'Next up already has three books. Move one to a different status first.'
+
+  function readingStatusError(error, reading) {
+    if (error.message === 'Next up already has three books') return nextUpMessage
+    if (reading === 'holding' && error.code === '23514') {
+      return 'Could not save Holding. Check that the Holding migration is installed in Supabase.'
+    }
+    return ''
+  }
+
+  function focusEntryButton(id) {
+    const button = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === id)
+    button?.focus({ preventScroll: true })
+    return button
+  }
+
+  async function moveToPlacement(entry, destination, reading, label, button, feedback) {
+    if (!owner || pending || !loaded) return
+    if (reading === nextUp && nextUpFull(entry.id)) {
+      feedback.textContent = nextUpMessage
+      return
+    }
+    const session = version
+    const hasBucketColumn = columns.includes(bucketColumn)
+    const book = entry.media_type === 'book'
+    const changes = {
+      ...(hasBucketColumn ? { queue_bucket: destination === entry.source ? null : destination } : {}),
+      ...(book ? { reading_status: reading } : {}),
+      ...(columns.includes(priorityColumn) ? { queue_position: null } : {}),
+    }
+    pending = true
+    button.disabled = true
+    feedback.textContent = ''
+    status.textContent = ''
+    try {
+      let request = db.from(tableName).update(changes).eq('id', entry.id)
+      if (hasBucketColumn) request = entry.queue_bucket == null
+        ? request.is('queue_bucket', null) : request.eq('queue_bucket', entry.queue_bucket)
+      if (book) request = entry.reading_status == null
+        ? request.is('reading_status', null) : request.eq('reading_status', entry.reading_status)
+      const { data, error } = await request.select(columns).single()
+      if (session !== version) return
+      if (error) throw error
+      entries = entries.map((item) => item.id === data.id ? data : item)
+      sourceFilters.get(destination).checked = true
+      rememberQueueView()
+      render()
+      focusEntryButton(data.id)
+      status.textContent = `Moved ${entry.title} to ${label}.`
+    } catch (error) {
+      if (session === version) feedback.textContent = readingStatusError(error, reading) ||
+        (error.code === 'PGRST116' ? 'The entry changed in another tab. Refresh and try again.' : 'Could not move this entry. Try again.')
+    } finally {
+      if (session === version) {
+        pending = false
+        button.disabled = false
+      }
+    }
+  }
+
   async function move(entry, anchor, after, focusDirection) {
     if (!owner || pending || !anchor || !columns.includes(priorityColumn)) return
     const session = version
@@ -475,6 +585,7 @@ export function createQueue(db, openTierEditor, onMedia) {
     byId('queue-priority-setup').hidden = !owner || !loaded || (columns.includes(priorityColumn) && canPromote)
     byId('queue-reading-setup').hidden = !owner || !loaded || columns.includes(readingColumns)
     byId('queue-book-setup').hidden = !owner || !loaded || columns.includes(bookColumns)
+    byId('queue-placement-setup').hidden = !owner || !loaded || !columns.includes(bookColumns) || columns.includes(bucketColumn)
     byId('queue-reading-filter-field').hidden = !viewer && (!owner || !loaded || !columns.includes(readingColumns))
   }
 
@@ -501,6 +612,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         if (session !== version) return
         if (offset === 0) {
           for (const fallback of [
+            bookWorkflowColumns,
             standardColumns + readingColumns + extraPokemonColumn,
             standardColumns + readingColumns, standardColumns, artworkColumns + readingColumns,
             basicColumns + priorityColumn + readingColumns, basicColumns + readingColumns, artworkColumns,
@@ -570,7 +682,7 @@ export function createQueue(db, openTierEditor, onMedia) {
     const self = entry.source === 'self'
     byId('queue-alias-field').hidden = self
     picker.reset(recommenderIds(entry.pokemon_id, entry.extra_pokemon_ids), columns.includes(extraPokemonColumn), self)
-    if (self) preview.append(pokemonSprite(ditto), 'Ditto · BackLog')
+    if (self) preview.append(pokemonSprite(ditto), queueBucketOf(entry) === 'self' ? 'Ditto · BackLog' : 'Ditto · Personal pick')
     remove.hidden = !entry.id
     byId('queue-editor-heading').textContent = entry.id ? 'Edit QuestLog entry'
       : self ? 'Add to BackLog' : 'Add to SideQuest'
@@ -798,22 +910,19 @@ export function createQueue(db, openTierEditor, onMedia) {
       render()
       dialog.close()
       if (!removeEntry && !entry.id && entry.media_type === 'book' && entry.source === 'recommended') celebrate('sidequest')
-      const returnButton = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === data.id)
-        ?? board.querySelector(`[data-queue-add="${entry.media_type}-${entry.source}"]`)
-      returnButton?.focus({ preventScroll: true })
+      if (!focusEntryButton(data.id)) {
+        board.querySelector(`[data-queue-add="${entry.media_type}-${queueBucketOf(entry)}"]`)?.focus({ preventScroll: true })
+      }
       status.textContent = removeEntry ? 'Removed from QuestLog.'
         : !columns.includes(',artwork_url') && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
         : 'Saved to QuestLog.'
     } catch (error) {
       if (session === version) {
-        const holdingCheckFailed = record?.reading_status === 'holding' && error.code === '23514'
-        formStatus.textContent = holdingCheckFailed ? 'Could not save Holding. Check that the Holding migration is installed in Supabase.'
-          : error.message === 'Next up already has three books'
-          ? 'Next up already has three books. Move one to a different status first.'
-          : entry.source_recommendation_id && !entry.id && error.code === '23505'
+        formStatus.textContent = readingStatusError(error, record?.reading_status) ||
+          (entry.source_recommendation_id && !entry.id && error.code === '23505'
             ? 'This recommendation is already in SideQuest.'
             : error.code === '23514' && (entry.media_type === 'game' || (entry.source_recommendation_id && entry.media_type !== 'book'))
-              ? mediaSetup : 'Could not save that change. Try again.'
+              ? mediaSetup : 'Could not save that change. Try again.')
       }
     } finally {
       if (session === version) {
@@ -855,9 +964,8 @@ export function createQueue(db, openTierEditor, onMedia) {
       customTag.focus()
       return
     }
-    if (!readingStatus.disabled && readingStatus.value === nextUp && entries.filter((entry) =>
-      entry.id !== activeEntry.id && entry.reading_status === nextUp).length >= nextUpLimit) {
-      formStatus.textContent = 'Next up already has three books. Move one to a different status first.'
+    if (!readingStatus.disabled && readingStatus.value === nextUp && nextUpFull(activeEntry.id)) {
+      formStatus.textContent = nextUpMessage
       readingStatus.focus()
       return
     }
@@ -947,8 +1055,7 @@ export function createQueue(db, openTierEditor, onMedia) {
       if (loaded && updated) render()
     },
     finishPromotion(id) {
-      const button = [...board.querySelectorAll('[data-queue-id]')].find((node) => node.dataset.queueId === id)
-      button?.focus({ preventScroll: true })
+      focusEntryButton(id)
       status.textContent = 'Added to MyShelf.'
     },
     setOwner(isOwner, viewerEntries = null) {

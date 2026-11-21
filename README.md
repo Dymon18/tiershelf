@@ -27,6 +27,8 @@ Run the [SideQuest Books migration](supabase/migrations/016_sidequest_books.sql)
 
 Run the [SideQuest Holding migration](supabase/migrations/017_sidequest_holding.sql) after the SideQuest Books migration. **Holding** is for books you have on hand and haven’t started.
 
+Run the [QuestLog moves migration](supabase/migrations/018_questlog_moves.sql) after the SideQuest Holding migration to move titles between SideQuest and BackLog. In Dymon mode, open **Move to…** on a QuestLog card. Books can be promoted to MyShelf from **In progress**.
+
 ## Credits
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)
