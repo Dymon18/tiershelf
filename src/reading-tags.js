@@ -11,11 +11,16 @@ const cues = new Map([
 
 export const readingTags = new Map([...cues].map(([id, { label }]) => [id, label]))
 
+export function openLibraryWorkUrl(workKey) {
+  return /^\/works\/OL[0-9]+W$/.test(workKey ?? '') ? 'https://openlibrary.org' + workKey : ''
+}
+
 export async function suggestBookTags(book) {
   let work
-  if (/^\/works\/OL[0-9]+W$/.test(book.workKey ?? '')) {
+  const workUrl = openLibraryWorkUrl(book.workKey)
+  if (workUrl) {
     try {
-      const response = await fetch(`https://openlibrary.org${book.workKey}.json`, { signal: AbortSignal.timeout(8000) })
+      const response = await fetch(workUrl + '.json', { signal: AbortSignal.timeout(8000) })
       if (response.ok) work = await response.json()
     } catch {
       // Search results still supply subjects when the work record is unavailable.

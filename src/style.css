@@ -413,6 +413,23 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 .queue-bucket h3 { margin: 0 0 .6rem; font-size: 1rem; }
 .queue-bucket p { margin: .4rem 0 .85rem; color: var(--muted); font-size: .875rem; }
 .queue-add { min-height: 34px; margin-top: .55rem; padding: .35rem .55rem; font-size: .875rem; white-space: normal; }
+.queue-libraries { display: flex; flex-wrap: wrap; gap: .35rem .9rem; margin-bottom: .85rem; }
+.queue-synopsis { color: var(--queue-accent, var(--accent)); font-size: .85rem; text-underline-offset: .2em; }
+.queue-entry-text .queue-synopsis { display: block; width: fit-content; margin-top: .3rem; }
+#queue-editor-synopsis { display: inline-block; margin-top: .35rem; }
+.queue-reading-sections { display: grid; gap: .65rem; }
+.queue-reading-sections > section {
+  padding: .75rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--reading-color, var(--queue-accent));
+  border-radius: 8px;
+}
+.queue-reading-sections [data-reading-status="in-progress"] { --reading-color: #a6dbbc; }
+.queue-reading-sections [data-reading-status="next-up"] { --reading-color: #c4b9ed; }
+.queue-reading-sections [data-reading-status="waiting-on-library"] { --reading-color: #a6cde8; }
+.queue-reading-sections [data-reading-status="request-needed"] { --reading-color: #f3bc91; }
+.queue-reading-sections h4 { margin: 0 0 .55rem; color: var(--reading-color); font-size: .95rem; }
+.queue-reading-sections > section > p { margin: 0; }
 
 .queue-entry-grid {
   list-style: none;
@@ -567,6 +584,9 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 .queue-reading-tags { display: flex; flex-wrap: wrap; gap: .45rem .8rem; margin: .8rem 0 0; border: 1px solid var(--border); border-radius: 7px; }
 .queue-reading-tags label { display: flex; align-items: center; }
 .queue-reading-tags input { width: auto; accent-color: var(--accent); }
+.queue-custom-tag { display: flex; flex-basis: 100%; align-items: end; gap: .45rem; }
+.queue-custom-tag label { display: grid; flex: 1; min-width: 0; }
+.queue-custom-tag input { width: 100%; }
 .reading-tag-suggestion { flex-basis: 100%; }
 .reading-tag-suggestion p { font-size: .875rem; margin: .4rem 0 0; color: var(--muted); }
 .reading-tag-suggestion p:empty { display: none; }

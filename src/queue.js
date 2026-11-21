@@ -1,7 +1,8 @@
 import { createPokemonPicker, ditto, extraPokemonColumn, pokemonName, pokemonSprite,
   populatePokemonOptions, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findBookOptions, httpsUrl, normalizeTitle } from './posters.js'
-import { readingTags, suggestBookTags } from './reading-tags.js'
+import { openLibraryWorkUrl, readingTags, suggestBookTags } from './reading-tags.js'
+import { categoryKey } from './categories.js'
 import { celebrate, enterView } from './effects.js'
 import { defaultMedia, media, mediaKeys, mediaKind, mediaSetup } from './media.js'
 import { readViewState, saveViewState } from './view-state.js'
@@ -15,7 +16,22 @@ const basicColumns = 'id,title,media_type,author,source,pokemon_id,created_at'
 const artworkColumns = basicColumns + ',artwork_url'
 const priorityColumn = ',queue_position'
 const readingColumns = ',reading_tags,source_recommendation_id'
+const bookColumns = ',reading_status,custom_reading_tags,synopsis_url'
 const standardColumns = artworkColumns + priorityColumn
+const fullColumns = standardColumns + readingColumns + extraPokemonColumn + bookColumns
+const requestNeeded = 'request-needed'
+const nextUp = 'next-up'
+const nextUpLimit = 3
+const readingStatuses = new Map([
+  ['in-progress', 'In progress'],
+  [nextUp, 'Next up'],
+  ['waiting-on-library', 'Waiting on library'],
+  [requestNeeded, 'Request needed'],
+])
+const isSideQuestBook = (entry) => entry.media_type === 'book' && entry.source === 'recommended'
+const readingStatusOf = (entry) => readingStatuses.has(entry.reading_status) ? entry.reading_status : requestNeeded
+const customTagId = (label) => 'custom:' + categoryKey(label)
+const tagIds = (entry) => [...(entry.reading_tags ?? []), ...(entry.custom_reading_tags ?? []).map(customTagId)]
 const queueHash = '#questlog'
 const queueHashes = new Set([queueHash, '#pokequeue'])
 const byId = (id) => document.getElementById(id)
@@ -23,6 +39,14 @@ function cell(tag, value) {
   const node = document.createElement(tag)
   node.textContent = value
   return node
+}
+
+function setSynopsisLink(link, title, author, url) {
+  const synopsis = httpsUrl(url)
+  const query = [title, author].filter(Boolean).join(' ')
+  link.hidden = !synopsis && !query
+  link.textContent = synopsis ? 'Read synopsis' : 'Find synopsis'
+  link.href = synopsis?.href ?? 'https://openlibrary.org/search?' + new URLSearchParams({ q: query })
 }
 
 export function createQueue(db, openTierEditor, onMedia) {
@@ -56,19 +80,18 @@ export function createQueue(db, openTierEditor, onMedia) {
   const readingFilter = byId('queue-reading-filter')
   const filterPanel = readingFilter.closest('details')
   const readingTagField = byId('queue-reading-tags')
+  const readingStatus = byId('queue-reading-status')
+  const synopsis = byId('queue-synopsis-url')
+  const synopsisLink = byId('queue-editor-synopsis')
+  const customTag = byId('queue-new-tag')
+  const customTagField = byId('queue-custom-tag')
   const tagSuggestion = byId('queue-tag-suggestion')
   const suggestTags = byId('queue-suggest-tags')
   const tagStatus = byId('queue-tag-status')
   const readingInputs = new Map()
-  for (const [id, name] of readingTags) {
-    readingFilter.add(new Option(name, id))
-    const label = cell('label', name)
-    const input = document.createElement('input')
-    input.type = 'checkbox'
-    label.prepend(input)
-    readingTagField.insertBefore(label, tagSuggestion)
-    readingInputs.set(id, input)
-  }
+  let tagOptions = new Map(readingTags)
+  let readingTag = ''
+  for (const [id, name] of readingStatuses) readingStatus.add(new Option(name, id))
   const sourceFilters = new Map(sources.map(({ key }) => [key, byId('queue-filter-' + key)]))
   let compact = false
   let promoted = new Set()
@@ -80,7 +103,8 @@ export function createQueue(db, openTierEditor, onMedia) {
   let tagLookupVersion = 0
   let matches = []
   let autofilledAuthor = ''
-  let columns = standardColumns + readingColumns + extraPokemonColumn
+  let autofilledSynopsis = ''
+  let columns = fullColumns
   let owner = false
   let viewer = false
   let version = 0
@@ -91,13 +115,38 @@ export function createQueue(db, openTierEditor, onMedia) {
   let activeEntry = null
   let trigger = null
 
+  function renderReadingFilter() {
+    tagOptions = new Map(readingTags)
+    for (const entry of entries) {
+      for (const name of entry.custom_reading_tags ?? []) {
+        const id = customTagId(name)
+        if (!tagOptions.has(id)) tagOptions.set(id, name)
+      }
+    }
+    readingFilter.replaceChildren(new Option('Any tag', ''), ...[...tagOptions].map(([id, name]) => new Option(name, id)))
+    if (!tagOptions.has(readingTag)) readingTag = ''
+    readingFilter.value = readingTag
+  }
+
+  function addReadingInput(id, name, checked = false) {
+    const label = cell('label', name)
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.value = name
+    input.checked = checked
+    label.prepend(input)
+    readingTagField.insertBefore(label, tagSuggestion)
+    readingInputs.set(id, input)
+    return input
+  }
+
   function rememberQueueView() {
     saveViewState('queue', {
       media: queueMedia,
       expanded: [...expanded],
       compact,
       sources: [...sourceFilters].filter(([, input]) => input.checked).map(([key]) => key),
-      readingTag: readingFilter.value,
+      readingTag,
       filtersOpen: filterPanel.open,
     })
   }
@@ -113,7 +162,7 @@ export function createQueue(db, openTierEditor, onMedia) {
     for (const [key, input] of sourceFilters) {
       input.checked = !Array.isArray(state.sources) || state.sources.includes(key)
     }
-    readingFilter.value = readingTags.has(state.readingTag) ? state.readingTag : ''
+    readingTag = typeof state.readingTag === 'string' ? state.readingTag : ''
     filterPanel.open = state.filtersOpen === true
     compactButton.setAttribute('aria-pressed', String(compact))
   }
@@ -143,6 +192,7 @@ export function createQueue(db, openTierEditor, onMedia) {
   }
 
   function render() {
+    renderReadingFilter()
     board.replaceChildren()
     board.dataset.compact = String(compact)
     const visibleTypes = compact ? [defaultMedia] : mediaKeys
@@ -203,66 +253,22 @@ export function createQueue(db, openTierEditor, onMedia) {
 
     const entriesInBucket = group.filter((entry) => entry.source === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
-    const tag = type === 'book' && !byId('queue-reading-filter-field').hidden ? readingFilter.value : ''
-    const visibleEntries = tag ? entriesInBucket.filter((entry) => entry.reading_tags?.includes(tag)) : entriesInBucket
-    if (visibleEntries.length) {
-      const list = document.createElement('ol')
-      list.className = 'queue-entry-grid'
-      visibleEntries.forEach((entry, index) => {
-        const card = document.createElement('li')
-        card.className = 'queue-entry'
-        card.dataset.queueRow = entry.id
-        const rank = cell('span', String((tag ? entriesInBucket.indexOf(entry) : index) + 1))
-        rank.className = 'queue-rank'
-        const text = document.createElement('div')
-        text.className = 'queue-entry-text'
-        const title = cell(owner ? 'button' : 'strong', entry.title)
-        if (owner) {
-          title.type = 'button'
-          title.className = 'queue-edit'
-          title.dataset.queueId = entry.id
-          title.setAttribute('aria-label', `Edit ${entry.title}`)
-          title.addEventListener('click', () => openEditor(entry, title))
-        }
-        text.append(title)
-        card.append(rank)
-        const url = httpsUrl(entry.artwork_url)
-        if (url && !compact) {
-          const cover = document.createElement('img')
-          cover.alt = ''
-          cover.className = 'queue-thumbnail'
-          cover.loading = 'lazy'
-          cover.referrerPolicy = 'no-referrer'
-          cover.addEventListener('error', () => { cover.hidden = true }, { once: true })
-          cover.src = url.href
-          card.append(cover)
-        }
-        card.append(text)
-        if (!compact) {
-          if (type === 'book' && entry.author) text.append(cell('span', entry.author))
-          const aliases = recommenderIds(entry.pokemon_id, entry.extra_pokemon_ids)
-          for (const id of aliases) {
-            const badge = cell('span', source.key === 'self' ? '' : pokemonName(id))
-            badge.className = 'queue-pokemon-name'
-            badge.prepend(pokemonSprite(id))
-            if (source.key === 'self') badge.firstChild.alt = 'Ditto'
-            text.append(badge)
-          }
-          const names = (entry.reading_tags ?? []).map((id) => readingTags.get(id)).filter(Boolean)
-          if (names.length) {
-            const tags = document.createElement('ul')
-            tags.className = 'queue-tag-list'
-            tags.setAttribute('aria-label', 'Reading tags')
-            tags.append(...names.map((name) => cell('li', name)))
-            text.append(tags)
-          }
-        }
-        if (owner) card.append(renderRowActions(entry, visibleEntries, index, card))
-        else if (promoted.has(entry.id) && !compact) text.append(cell('span', 'In MyShelf'))
-        list.append(card)
-      })
-      bucket.append(list)
-    } else bucket.append(cell('p', tag ? 'No books match this tag.' : 'Empty'))
+    const sideQuestBooks = type === 'book' && source.key === 'recommended'
+    const tag = type === 'book' && !byId('queue-reading-filter-field').hidden ? readingTag : ''
+    if (sideQuestBooks) bucket.append(renderLibraryLinks())
+    if (sideQuestBooks && hasBookWorkflow()) {
+      const sections = document.createElement('div')
+      sections.className = 'queue-reading-sections'
+      for (const [id, name] of readingStatuses) {
+        const books = entriesInBucket.filter((entry) => readingStatusOf(entry) === id)
+        const section = document.createElement('section')
+        section.dataset.readingStatus = id
+        const count = id === nextUp ? ` (${books.length}/${nextUpLimit})` : ''
+        section.append(cell('h4', name + count), renderQueueList(books, tag))
+        sections.append(section)
+      }
+      bucket.append(sections)
+    } else bucket.append(renderQueueList(entriesInBucket, tag))
 
     if (owner) {
       const add = cell('button', '+ ' + source.add)
@@ -273,6 +279,100 @@ export function createQueue(db, openTierEditor, onMedia) {
       bucket.append(add)
     }
     return bucket
+  }
+
+  function hasBookWorkflow() {
+    return owner ? columns.includes(bookColumns) : entries.some((entry) => Object.hasOwn(entry, 'reading_status'))
+  }
+
+  function renderLibraryLinks() {
+    const links = document.createElement('nav')
+    links.className = 'queue-libraries'
+    links.setAttribute('aria-label', 'Library links')
+    for (const [name, url] of [
+      ['Carleton MacOdrum Library', 'https://library.carleton.ca/'],
+      ['Ottawa Public Library', 'https://about.biblioottawalibrary.ca/en'],
+    ]) {
+      const link = synopsisAnchor()
+      link.textContent = name
+      link.href = url
+      links.append(link)
+    }
+    return links
+  }
+
+  function synopsisAnchor() {
+    const link = document.createElement('a')
+    link.className = 'queue-synopsis'
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    return link
+  }
+
+  function renderQueueList(entriesInBucket, tag) {
+    const visibleEntries = tag ? entriesInBucket.filter((entry) => tagIds(entry).includes(tag)) : entriesInBucket
+    if (!visibleEntries.length) return cell('p', tag && entriesInBucket.length ? 'No books match this tag.' : 'Empty')
+    const list = document.createElement('ol')
+    list.className = 'queue-entry-grid'
+    visibleEntries.forEach((entry, index) => {
+      const card = document.createElement('li')
+      card.className = 'queue-entry'
+      card.dataset.queueRow = entry.id
+      const rank = cell('span', String(entriesInBucket.indexOf(entry) + 1))
+      rank.className = 'queue-rank'
+      const text = document.createElement('div')
+      text.className = 'queue-entry-text'
+      const title = cell(owner ? 'button' : 'strong', entry.title)
+      if (owner) {
+        title.type = 'button'
+        title.className = 'queue-edit'
+        title.dataset.queueId = entry.id
+        title.setAttribute('aria-label', `Edit ${entry.title}`)
+        title.addEventListener('click', () => openEditor(entry, title))
+      }
+      text.append(title)
+      card.append(rank)
+      const url = httpsUrl(entry.artwork_url)
+      if (url && !compact) {
+        const cover = document.createElement('img')
+        cover.alt = ''
+        cover.className = 'queue-thumbnail'
+        cover.loading = 'lazy'
+        cover.referrerPolicy = 'no-referrer'
+        cover.addEventListener('error', () => { cover.hidden = true }, { once: true })
+        cover.src = url.href
+        card.append(cover)
+      }
+      if (entry.media_type === 'book') {
+        const link = synopsisAnchor()
+        setSynopsisLink(link, entry.title, entry.author, entry.synopsis_url)
+        text.append(link)
+      }
+      card.append(text)
+      if (!compact) {
+        if (entry.media_type === 'book' && entry.author) text.append(cell('span', entry.author))
+        const aliases = recommenderIds(entry.pokemon_id, entry.extra_pokemon_ids)
+        for (const id of aliases) {
+          const badge = cell('span', entry.source === 'self' ? '' : pokemonName(id))
+          badge.className = 'queue-pokemon-name'
+          badge.prepend(pokemonSprite(id))
+          if (entry.source === 'self') badge.firstChild.alt = 'Ditto'
+          text.append(badge)
+        }
+        const names = tagIds(entry).map((id) => tagOptions.get(id)).filter(Boolean)
+        if (names.length) {
+          const tags = document.createElement('ul')
+          tags.className = 'queue-tag-list'
+          tags.setAttribute('aria-label', 'Reading tags')
+          tags.append(...names.map((name) => cell('li', name)))
+          text.append(tags)
+        }
+      }
+      if (owner) card.append(renderRowActions(entry, visibleEntries, index, card))
+      else if (promoted.has(entry.id) && !compact) text.append(cell('span', 'In MyShelf'))
+      list.append(card)
+    })
+    return list
   }
 
   function renderRowActions(entry, entriesInBucket, index, row) {
@@ -312,7 +412,7 @@ export function createQueue(db, openTierEditor, onMedia) {
       event.dataTransfer.effectAllowed = 'move'
     })
     const isTarget = () => dragging && dragging.id !== entry.id &&
-      dragging.media_type === entry.media_type && dragging.source === entry.source
+      entriesInBucket.includes(dragging)
     const after = (event) => {
       const bounds = row.getBoundingClientRect()
       return compact || matchMedia('(max-width: 540px)').matches
@@ -373,6 +473,7 @@ export function createQueue(db, openTierEditor, onMedia) {
   function renderSetup() {
     byId('queue-priority-setup').hidden = !owner || !loaded || (columns.includes(priorityColumn) && canPromote)
     byId('queue-reading-setup').hidden = !owner || !loaded || columns.includes(readingColumns)
+    byId('queue-book-setup').hidden = !owner || !loaded || columns.includes(bookColumns)
     byId('queue-reading-filter-field').hidden = !viewer && (!owner || !loaded || !columns.includes(readingColumns))
   }
 
@@ -399,6 +500,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         if (session !== version) return
         if (offset === 0) {
           for (const fallback of [
+            standardColumns + readingColumns + extraPokemonColumn,
             standardColumns + readingColumns, standardColumns, artworkColumns + readingColumns,
             basicColumns + priorityColumn + readingColumns, basicColumns + readingColumns, artworkColumns,
             basicColumns + priorityColumn, basicColumns,
@@ -437,15 +539,31 @@ export function createQueue(db, openTierEditor, onMedia) {
     title.value = entry.title ?? ''
     author.value = entry.author ?? ''
     autofilledAuthor = ''
+    autofilledSynopsis = ''
+    synopsis.value = entry.synopsis_url ?? ''
     artwork.value = entry.artwork_url ?? ''
     resetArtworkLookup()
     renderArtwork()
     const book = entry.media_type === 'book'
     byId('queue-author-field').hidden = !book
     author.disabled = !book
+    const bookWorkflow = columns.includes(bookColumns)
+    readingStatus.disabled = !isSideQuestBook(entry) || !bookWorkflow
+    readingStatus.closest('label').hidden = readingStatus.disabled
+    readingStatus.value = readingStatusOf(entry)
+    synopsis.disabled = !book || !bookWorkflow
+    synopsis.closest('label').hidden = synopsis.disabled
+    byId('queue-synopsis-field').hidden = !book
+    renderSynopsis()
     readingTagField.hidden = !book || !columns.includes(readingColumns)
     readingTagField.disabled = readingTagField.hidden
-    for (const [id, input] of readingInputs) input.checked = entry.reading_tags?.includes(id) ?? false
+    customTagField.hidden = !bookWorkflow
+    customTagField.inert = !bookWorkflow
+    customTag.value = ''
+    for (const input of readingInputs.values()) input.parentElement.remove()
+    readingInputs.clear()
+    const selectedTags = new Set(tagIds(entry))
+    for (const [id, name] of tagOptions) addReadingInput(id, name, selectedTags.has(id))
     lookup.textContent = book ? 'Find cover' : 'Find poster'
     byId('queue-artwork-field').firstChild.textContent = book ? 'Cover image URL' : 'Poster image URL'
     const self = entry.source === 'self'
@@ -466,6 +584,19 @@ export function createQueue(db, openTierEditor, onMedia) {
     artworkPreview.hidden = !url
     if (url) artworkPreview.src = url.href
     else artworkPreview.removeAttribute('src')
+  }
+
+  function renderSynopsis() {
+    setSynopsisLink(synopsisLink, title.value.trim(), author.value.trim(), synopsis.value.trim())
+  }
+
+  function useBookSynopsis(book) {
+    if (synopsis.disabled || (synopsis.value.trim() && synopsis.value !== autofilledSynopsis)) return
+    const url = openLibraryWorkUrl(book.workKey)
+    if (!url) return
+    autofilledSynopsis = url
+    synopsis.value = url
+    renderSynopsis()
   }
 
   function resetArtworkLookup() {
@@ -494,6 +625,8 @@ export function createQueue(db, openTierEditor, onMedia) {
       autofilledAuthor = result.author?.slice(0, 200) ?? ''
       author.value = autofilledAuthor
     }
+    if (normalizeTitle(result.title) === normalizeTitle(title.value)) useBookSynopsis(result)
+    renderSynopsis()
     lookupStatus.textContent = result.image ? 'Image found.' : 'This result has no image. You can paste a direct image URL.'
   }
 
@@ -532,8 +665,16 @@ export function createQueue(db, openTierEditor, onMedia) {
     }
   }
 
-  title.addEventListener('input', resetArtworkLookup)
-  author.addEventListener('input', resetTagLookup)
+  title.addEventListener('input', () => {
+    if (synopsis.value === autofilledSynopsis) synopsis.value = ''
+    autofilledSynopsis = ''
+    resetArtworkLookup()
+    renderSynopsis()
+  })
+  author.addEventListener('input', () => {
+    resetTagLookup()
+    renderSynopsis()
+  })
   title.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' || event.isComposing) return
     event.preventDefault()
@@ -546,10 +687,16 @@ export function createQueue(db, openTierEditor, onMedia) {
     if (!result) return
     title.value = result.title
     resetTagLookup()
+    useBookSynopsis(result)
+    renderSynopsis()
     matchTitle.disabled = true
     title.focus()
   })
   artwork.addEventListener('input', renderArtwork)
+  synopsis.addEventListener('input', () => {
+    autofilledSynopsis = ''
+    renderSynopsis()
+  })
   artworkPreview.addEventListener('error', () => {
     artworkPreview.hidden = true
     lookupStatus.textContent = 'The image could not load. Try another direct image URL.'
@@ -560,6 +707,29 @@ export function createQueue(db, openTierEditor, onMedia) {
     suggestTags.disabled = false
     tagStatus.textContent = ''
   }
+
+  function addCustomTag() {
+    if (pending || readingTagField.disabled || customTagField.hidden) return
+    const name = customTag.value.trim().replace(/\s+/g, ' ')
+    if (!name || name.length > 48) {
+      tagStatus.textContent = 'Enter a reading tag up to 48 characters.'
+      customTag.focus()
+      return
+    }
+    const existing = [...readingInputs.values()].find((input) => categoryKey(input.value) === categoryKey(name))
+    const input = existing ?? addReadingInput(customTagId(name), name)
+    input.checked = true
+    tagStatus.textContent = ''
+    customTag.value = ''
+    customTag.focus()
+  }
+
+  byId('queue-add-tag').addEventListener('click', addCustomTag)
+  customTag.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || event.isComposing) return
+    event.preventDefault()
+    addCustomTag()
+  })
 
   suggestTags.addEventListener('click', async () => {
     if (!owner || !dialog.open || pending || readingTagField.disabled || suggestTags.disabled) return
@@ -587,6 +757,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         tagStatus.textContent = 'Choose the right book in Find cover or enter its author, then try again.'
         return
       }
+      useBookSynopsis(book)
       const tags = await suggestBookTags(book)
       if (!stillEditing()) return
       const additions = tags.filter((id) => !readingInputs.get(id).checked)
@@ -633,10 +804,14 @@ export function createQueue(db, openTierEditor, onMedia) {
         : !columns.includes(',artwork_url') && artwork.value ? 'Saved title details. The artwork migration is needed to keep the image.'
         : 'Saved to QuestLog.'
     } catch (error) {
-      if (session === version) formStatus.textContent = entry.source_recommendation_id && !entry.id && error.code === '23505'
-        ? 'This recommendation is already in SideQuest.'
-        : error.code === '23514' && (entry.media_type === 'game' || (entry.source_recommendation_id && entry.media_type !== 'book'))
-          ? mediaSetup : 'Could not save that change. Try again.'
+      if (session === version) {
+        formStatus.textContent = error.message === 'Next up already has three books'
+          ? 'Next up already has three books. Move one to a different status first.'
+          : entry.source_recommendation_id && !entry.id && error.code === '23505'
+            ? 'This recommendation is already in SideQuest.'
+            : error.code === '23514' && (entry.media_type === 'game' || (entry.source_recommendation_id && entry.media_type !== 'book'))
+              ? mediaSetup : 'Could not save that change. Try again.'
+      }
     } finally {
       if (session === version) {
         pending = false
@@ -663,12 +838,34 @@ export function createQueue(db, openTierEditor, onMedia) {
       artwork.focus()
       return
     }
+    const synopsisUrl = synopsis.disabled ? '' : synopsis.value.trim()
+    const bookPage = httpsUrl(synopsisUrl)
+    if (synopsisUrl && (!bookPage || bookPage.href.length > 2000)) {
+      formStatus.textContent = 'Enter an HTTPS link to the book’s synopsis.'
+      synopsis.focus()
+      return
+    }
+    const selectedTags = [...readingInputs].filter(([, input]) => input.checked)
+    const customTags = selectedTags.filter(([id]) => !readingTags.has(id)).map(([, input]) => input.value)
+    if (!synopsis.disabled && customTags.length > 30) {
+      formStatus.textContent = 'Choose up to 30 custom reading tags per book.'
+      customTag.focus()
+      return
+    }
+    if (!readingStatus.disabled && readingStatus.value === nextUp && entries.filter((entry) =>
+      entry.id !== activeEntry.id && entry.reading_status === nextUp).length >= nextUpLimit) {
+      formStatus.textContent = 'Next up already has three books. Move one to a different status first.'
+      readingStatus.focus()
+      return
+    }
     persist(false, {
       ...(columns.includes(',artwork_url') ? { artwork_url: image || null } : {}),
       ...(columns.includes(extraPokemonColumn) ? { extra_pokemon_ids: aliasIds.slice(1) } : {}),
       ...(readingTagField.disabled ? {} : {
-        reading_tags: [...readingInputs].filter(([, input]) => input.checked).map(([id]) => id),
+        reading_tags: selectedTags.map(([id]) => id).filter((id) => readingTags.has(id)),
       }),
+      ...(readingStatus.disabled ? {} : { reading_status: readingStatus.value }),
+      ...(synopsis.disabled ? {} : { synopsis_url: bookPage?.href ?? null, custom_reading_tags: customTags }),
       ...(activeEntry.id || !activeEntry.source_recommendation_id ? {} : {
         source_recommendation_id: activeEntry.source_recommendation_id,
       }),
@@ -698,6 +895,7 @@ export function createQueue(db, openTierEditor, onMedia) {
   })
   retry.addEventListener('click', load)
   for (const input of [...sourceFilters.values(), readingFilter]) input.addEventListener('change', () => {
+    if (input === readingFilter) readingTag = readingFilter.value
     rememberQueueView()
     if (loaded) render()
   })
@@ -724,7 +922,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         source_recommendation_id: recommendation.id,
       }, byId('recommendation-mailbox'))
       if (opened) {
-        readingFilter.value = ''
+        readingTag = ''
         sourceFilters.get('recommended').checked = true
         if (compact && kind !== 'book') {
           compact = false
@@ -762,7 +960,7 @@ export function createQueue(db, openTierEditor, onMedia) {
       pending = false
       activeEntry = null
       trigger = null
-      columns = standardColumns + readingColumns + extraPokemonColumn
+      columns = fullColumns
       dragging = null
       byId('queue-priority-setup').hidden = true
       resetArtworkLookup()

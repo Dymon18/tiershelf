@@ -23,6 +23,8 @@ For an existing TierShelf database with its mailbox set up, run the [Games and m
 
 Run the [category editor migration](supabase/migrations/015_edit_categories.sql) to rename categories and genres in Dymon mode. In MyShelf, choose a media type, open its category filter, and select **Edit categories** or **Edit genres**.
 
+Run the [SideQuest Books migration](supabase/migrations/016_sidequest_books.sql) after the reading tags and multiple Pokémon migrations to enable reading statuses, custom reading tags, and saved synopsis links. Existing SideQuest books start in **Request needed** until you assign a status. **Next up** holds up to three books.
+
 ## Credits
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)

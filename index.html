@@ -103,6 +103,9 @@
       <p id="queue-reading-setup" class="queue-setup" hidden>
         Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/011_reading_tags_and_mailbox.sql" target="_blank" rel="noopener">SB reading tags and mailbox migration</a> and refresh.
       </p>
+      <p id="queue-book-setup" class="queue-setup" hidden>
+        Run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/016_sidequest_books.sql" target="_blank" rel="noopener">SideQuest Books migration</a> to save reading status, custom tags, and synopsis links.
+      </p>
       <div id="queue-columns" class="queue-columns"></div>
     </section>
   </main>
@@ -212,11 +215,22 @@
       <img id="queue-artwork-preview" class="queue-artwork-preview" alt="Artwork preview" referrerpolicy="no-referrer" hidden>
       <p id="queue-lookup-status" role="status"></p>
       <label id="queue-author-field" class="queue-field">Author<input id="queue-author" maxlength="200" autocomplete="off"></label>
+      <label id="queue-reading-status-field" class="queue-field" hidden>Reading status
+        <select id="queue-reading-status" disabled></select>
+      </label>
+      <div id="queue-synopsis-field" class="queue-field" hidden>
+        <label>Synopsis URL<input id="queue-synopsis-url" type="url" maxlength="2000" placeholder="Optional HTTPS book page" disabled></label>
+        <a id="queue-editor-synopsis" class="queue-synopsis" target="_blank" rel="noopener noreferrer" hidden>Find synopsis</a>
+      </div>
       <fieldset id="queue-reading-tags" class="queue-reading-tags" hidden>
         <legend>Reading tags</legend>
         <div class="reading-tag-suggestion" id="queue-tag-suggestion">
           <button id="queue-suggest-tags" class="button" type="button">Suggest reading tags</button>
           <p id="queue-tag-status" role="status"></p>
+        </div>
+        <div id="queue-custom-tag" class="queue-custom-tag" hidden>
+          <label>New reading tag<input id="queue-new-tag" maxlength="48" autocomplete="off"></label>
+          <button id="queue-add-tag" class="button" type="button">Add tag</button>
         </div>
       </fieldset>
       <div id="queue-alias-field" class="queue-field">
