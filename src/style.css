@@ -426,6 +426,7 @@ body:is([data-mode="dymon"], [data-mode="viewer"])[data-view="queue"] .mode-patt
 }
 .queue-reading-sections [data-reading-status="in-progress"] { --reading-color: #a6dbbc; }
 .queue-reading-sections [data-reading-status="next-up"] { --reading-color: #c4b9ed; }
+.queue-reading-sections [data-reading-status="holding"] { --reading-color: #f0db97; }
 .queue-reading-sections [data-reading-status="waiting-on-library"] { --reading-color: #a6cde8; }
 .queue-reading-sections [data-reading-status="request-needed"] { --reading-color: #f3bc91; }
 .queue-reading-sections h4 { margin: 0 0 .55rem; color: var(--reading-color); font-size: .95rem; }

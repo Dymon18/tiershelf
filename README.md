@@ -25,6 +25,8 @@ Run the [category editor migration](supabase/migrations/015_edit_categories.sql)
 
 Run the [SideQuest Books migration](supabase/migrations/016_sidequest_books.sql) after the reading tags and multiple Pokémon migrations to enable reading statuses, custom reading tags, and saved synopsis links. Existing SideQuest books start in **Request needed** until you assign a status. **Next up** holds up to three books.
 
+Run the [SideQuest Holding migration](supabase/migrations/017_sidequest_holding.sql) after the SideQuest Books migration. **Holding** is for books you have on hand and haven’t started.
+
 ## Credits
 
 The Demo mode background uses the [Chromium offline error artwork](https://github.com/chromium/chromium/blob/main/components/neterror/resources/images/default_100_percent/offline/100-error-offline.png). [Chromium license](public/credits/chromium-license.txt)

@@ -25,6 +25,7 @@ const nextUpLimit = 3
 const readingStatuses = new Map([
   ['in-progress', 'In progress'],
   [nextUp, 'Next up'],
+  ['holding', 'Holding'],
   ['waiting-on-library', 'Waiting on library'],
   [requestNeeded, 'Request needed'],
 ])
@@ -805,7 +806,9 @@ export function createQueue(db, openTierEditor, onMedia) {
         : 'Saved to QuestLog.'
     } catch (error) {
       if (session === version) {
-        formStatus.textContent = error.message === 'Next up already has three books'
+        const holdingCheckFailed = record?.reading_status === 'holding' && error.code === '23514'
+        formStatus.textContent = holdingCheckFailed ? 'Could not save Holding. Check that the Holding migration is installed in Supabase.'
+          : error.message === 'Next up already has three books'
           ? 'Next up already has three books. Move one to a different status first.'
           : entry.source_recommendation_id && !entry.id && error.code === '23505'
             ? 'This recommendation is already in SideQuest.'
