@@ -68,7 +68,6 @@ export function createCategoryEditor(db, { getType, getNames, onUpdate }) {
           return
         }
         store(data ?? [])
-        onUpdate()
         if (dialog.open && !pending) {
           setup.hidden = true
           const selected = current.value
@@ -80,7 +79,10 @@ export function createCategoryEditor(db, { getType, getNames, onUpdate }) {
       } catch {
         // Existing archives and Friend mode work without the optional rename table.
       } finally {
-        if (request === version) loadRequest = null
+        if (request === version) {
+          loadRequest = null
+          onUpdate()
+        }
       }
     })()
     return loadRequest
@@ -166,6 +168,7 @@ export function createCategoryEditor(db, { getType, getNames, onUpdate }) {
 
   return {
     label, labels,
+    get loading() { return Boolean(loadRequest) },
     preferredLabels: (type) => [...(aliases.get(type)?.values() ?? [])],
     lookupNames(type, name) {
       const key = categoryKey(name)

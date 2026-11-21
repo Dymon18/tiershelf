@@ -4,6 +4,7 @@ import { findArtworkOptions, findBookOptions, httpsUrl, normalizeTitle } from '.
 import { readingTags, suggestBookTags } from './reading-tags.js'
 import { celebrate, enterView } from './effects.js'
 import { defaultMedia, media, mediaKeys, mediaKind, mediaSetup } from './media.js'
+import { readViewState, saveViewState } from './view-state.js'
 
 const sources = [
   { key: 'recommended', label: 'SideQuest', description: 'Recommendations', add: 'Add to SideQuest', icon: '🧭' },
@@ -53,6 +54,7 @@ export function createQueue(db, openTierEditor, onMedia) {
   const queueButton = byId('show-queue')
   const compactButton = byId('queue-compact')
   const readingFilter = byId('queue-reading-filter')
+  const filterPanel = readingFilter.closest('details')
   const readingTagField = byId('queue-reading-tags')
   const tagSuggestion = byId('queue-tag-suggestion')
   const suggestTags = byId('queue-suggest-tags')
@@ -88,6 +90,33 @@ export function createQueue(db, openTierEditor, onMedia) {
   let pending = false
   let activeEntry = null
   let trigger = null
+
+  function rememberQueueView() {
+    saveViewState('queue', {
+      media: queueMedia,
+      expanded: [...expanded],
+      compact,
+      sources: [...sourceFilters].filter(([, input]) => input.checked).map(([key]) => key),
+      readingTag: readingFilter.value,
+      filtersOpen: filterPanel.open,
+    })
+  }
+
+  function restoreQueueView() {
+    const state = readViewState('queue')
+    compact = state.compact === true
+    queueMedia = compact ? defaultMedia : mediaKind(state.media)
+    expanded.clear()
+    for (const key of mediaKeys) {
+      if (!Array.isArray(state.expanded) || state.expanded.includes(key)) expanded.add(key)
+    }
+    for (const [key, input] of sourceFilters) {
+      input.checked = !Array.isArray(state.sources) || state.sources.includes(key)
+    }
+    readingFilter.value = readingTags.has(state.readingTag) ? state.readingTag : ''
+    filterPanel.open = state.filtersOpen === true
+    compactButton.setAttribute('aria-pressed', String(compact))
+  }
 
   function selectMedia(type) {
     queueMedia = type
@@ -154,6 +183,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         body.inert = !open
         toggle.setAttribute('aria-expanded', String(open))
         column.dataset.expanded = String(open)
+        rememberQueueView()
       })
       board.append(column)
     }
@@ -173,7 +203,7 @@ export function createQueue(db, openTierEditor, onMedia) {
 
     const entriesInBucket = group.filter((entry) => entry.source === source.key)
       .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity))
-    const tag = type === 'book' ? readingFilter.value : ''
+    const tag = type === 'book' && !byId('queue-reading-filter-field').hidden ? readingFilter.value : ''
     const visibleEntries = tag ? entriesInBucket.filter((entry) => entry.reading_tags?.includes(tag)) : entriesInBucket
     if (visibleEntries.length) {
       const list = document.createElement('ol')
@@ -668,8 +698,10 @@ export function createQueue(db, openTierEditor, onMedia) {
   })
   retry.addEventListener('click', load)
   for (const input of [...sourceFilters.values(), readingFilter]) input.addEventListener('change', () => {
+    rememberQueueView()
     if (loaded) render()
   })
+  filterPanel.addEventListener('toggle', rememberQueueView)
   compactButton.addEventListener('click', () => {
     compact = !compact
     if (compact) {
@@ -677,6 +709,7 @@ export function createQueue(db, openTierEditor, onMedia) {
       selectMedia(defaultMedia)
     }
     compactButton.setAttribute('aria-pressed', String(compact))
+    rememberQueueView()
     if (loaded) render()
   })
 
@@ -700,6 +733,7 @@ export function createQueue(db, openTierEditor, onMedia) {
         queueMedia = kind
         expanded.add(kind)
         switchView(true, true)
+        rememberQueueView()
         render()
       }
       return opened
@@ -721,7 +755,6 @@ export function createQueue(db, openTierEditor, onMedia) {
       if (owner === isOwner && viewer === isViewer) return
       owner = isOwner
       viewer = isViewer
-      queueMedia = defaultMedia
       version++
       entries = viewerEntries ?? []
       loadRequest = null
@@ -744,8 +777,7 @@ export function createQueue(db, openTierEditor, onMedia) {
       formStatus.textContent = ''
       setup.hidden = true
       nav.hidden = !owner && !viewer
-      for (const input of sourceFilters.values()) input.checked = true
-      readingFilter.value = ''
+      restoreQueueView()
       renderSetup()
       const reopenQueue = (owner || viewer) && queueHashes.has(location.hash)
       switchView(reopenQueue, reopenQueue || (!owner && !viewer))

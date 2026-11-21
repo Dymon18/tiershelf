@@ -6,7 +6,8 @@ import { createViewer } from './viewer.js'
 import { createMailbox } from './mailbox.js'
 import { categoryKey, createCategoryEditor } from './categories.js'
 import { celebrate, enterView, initDecorations } from './effects.js'
-import { defaultMedia, media, mediaSetup } from './media.js'
+import { defaultMedia, media, mediaKind, mediaSetup } from './media.js'
+import { readViewState, saveViewState } from './view-state.js'
 import { createPokemonPicker, extraPokemonColumn, pokemonName, pokemonSprite, recommenderIds } from './pokemon.js'
 import { findArtworkOptions, findEntryDetails, httpsUrl, normalizeTitle, wikipediaTitle } from './posters.js'
 
@@ -162,12 +163,14 @@ const categoryEditor = createCategoryEditor(db, {
   getType: () => filter,
   getNames: categoriesFor,
   onUpdate(type, previous, renamed) {
-    if (filter === type && activeCategories.delete(categoryKey(previous))) activeCategories.add(categoryKey(renamed))
+    const renamedActiveCategory = filter === type && activeCategories.delete(categoryKey(previous))
+    if (renamedActiveCategory) activeCategories.add(categoryKey(renamed))
     if (editor.open) {
       selectedCategories = new Set(categoryEditor.labels(typeInput.value, selectedCategories))
       renderCategoryPicker()
     }
     render()
+    if (renamedActiveCategory) rememberShelfView()
   },
 })
 
@@ -216,7 +219,7 @@ function renderMovieFilters() {
     select.addEventListener('change', () => {
       if (select.value) movieFilterValues.set(key, select.value)
       else movieFilterValues.delete(key)
-      render()
+      updateShelfView()
     })
     const label = document.createElement('label')
     label.append(name, select)
@@ -231,8 +234,14 @@ function renderCategoryFilter() {
   byId('manage-categories').textContent = 'Edit ' + heading.toLowerCase()
   categoryFilter.hidden = ownerMode && !archiveDetails
   const options = categoriesFor(filter)
-  const available = new Set(options.map(categoryKey))
-  for (const key of activeCategories) if (!available.has(key)) activeCategories.delete(key)
+  if (!categoryEditor.loading) {
+    const available = new Set(options.map(categoryKey))
+    for (const key of [...activeCategories]) {
+      const currentKey = categoryKey(categoryEditor.label(filter, key))
+      if (currentKey !== key || !available.has(key)) activeCategories.delete(key)
+      if (available.has(currentKey)) activeCategories.add(currentKey)
+    }
+  }
   const count = activeCategories.size + (filter === 'movie' ? movieFilterValues.size : 0)
   byId('category-filter-label').textContent = count ? `${heading} (${count})` : heading
   const focused = document.activeElement?.dataset.category
@@ -248,7 +257,7 @@ function renderCategoryFilter() {
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) activeCategories.add(key)
       else activeCategories.delete(key)
-      render()
+      updateShelfView()
     })
     if (focused === key) restoreFocus = checkbox
     label.append(checkbox, name)
@@ -1023,26 +1032,66 @@ byId('entry-form').addEventListener('submit', (event) => {
   submitEditor(() => save(record), editing?.id)
 })
 deleteButton.addEventListener('click', () => submitEditor(() => remove(editing)))
-function setMediaFilter(type, animate = false) {
+function rememberShelfView() {
+  saveViewState('shelf', {
+    media: filter,
+    categories: [...activeCategories],
+    movieFacets: Object.fromEntries(movieFilterValues),
+    categoryMatch: categoryMatch.value,
+    search: search.value,
+    filtersOpen: categoryFilter.open,
+  })
+}
+
+function updateShelfView() {
+  render()
+  rememberShelfView()
+}
+
+function setShelfMedia(type) {
   filter = type
   document.body.dataset.media = type
   if (document.body.dataset.view !== 'queue') mailbox.setMedia(type)
+  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === type)))
+}
+
+function restoreShelfView() {
+  const view = readViewState('shelf')
+  setShelfMedia(mediaKind(view.media))
+  activeCategories.clear()
+  if (Array.isArray(view.categories)) {
+    for (const key of view.categories) if (typeof key === 'string') activeCategories.add(categoryKey(key))
+  }
+  movieFilterValues.clear()
+  if (filter === 'movie') {
+    for (const key of Object.keys(movieFacets)) {
+      const value = view.movieFacets?.[key]
+      if (typeof value === 'string' && value) movieFilterValues.set(key, value)
+    }
+  }
+  categoryFilter.open = view.filtersOpen === true
+  categoryMatch.value = view.categoryMatch === 'any' ? 'any' : 'all'
+  search.value = typeof view.search === 'string' ? view.search : ''
+}
+
+function setMediaFilter(type, animate = false) {
+  setShelfMedia(type)
   activeCategories.clear()
   movieFilterValues.clear()
   categoryFilter.open = false
-  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === type)))
-  render()
+  updateShelfView()
   if (animate) enterView(board)
 }
 filters.forEach((button) => button.addEventListener('click', () => {
   if (filter !== button.dataset.filter) setMediaFilter(button.dataset.filter, true)
 }))
-search.addEventListener('input', render)
-categoryMatch.addEventListener('change', render)
+search.addEventListener('input', updateShelfView)
+categoryMatch.addEventListener('change', updateShelfView)
+categoryFilter.addEventListener('toggle', rememberShelfView)
 byId('clear-categories').addEventListener('click', () => {
   activeCategories.clear()
   movieFilterValues.clear()
-  render()
+  updateShelfView()
 })
 
 function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
@@ -1053,18 +1102,11 @@ function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   document.body.dataset.mode = mode
   viewer.setMode(mode)
   mailbox.setMode(mode, viewerKey)
-  queue.setOwner(isOwner, viewerQueue)
   entries = records
   categoryEditor.setOwner(isOwner && archiveDetails)
   dragging = null
-  filter = defaultMedia
-  document.body.dataset.media = filter
-  if (document.body.dataset.view !== 'queue') mailbox.setMedia(filter)
-  activeCategories.clear()
-  movieFilterValues.clear()
-  categoryFilter.open = false
-  search.value = ''
-  filters.forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.filter === filter)))
+  restoreShelfView()
+  queue.setOwner(isOwner, viewerQueue)
   if (editor.open) editor.close()
   byId('mode').textContent = isOwner ? 'Dymon mode' : viewerMode ? 'Friend mode' : 'Demo mode'
   byId('add-button').hidden = viewerMode
@@ -1103,6 +1145,7 @@ githubButton.addEventListener('click', async () => {
 })
 
 initDecorations()
+restoreShelfView()
 render()
 if (db) {
   let authVersion = 0
