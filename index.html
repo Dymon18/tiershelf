@@ -53,6 +53,7 @@
                 <legend>Match selected</legend>
                 <label><input id="category-match-any" type="radio" name="category-match" value="any" checked><span>Any (OR)</span></label>
                 <label><input id="category-match-all" type="radio" name="category-match" value="all"><span>All (AND)</span></label>
+                <label><input id="category-match-exclude" type="radio" name="category-match" value="exclude"><span>Exclude</span></label>
               </fieldset>
               <button id="clear-categories" class="button" type="button">Clear</button>
               <button id="manage-categories" class="button" type="button" hidden>Edit categories</button>
@@ -61,6 +62,7 @@
             </div>
           </details>
           <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Search titles" aria-label="Search titles"></label>
+          <div id="quick-categories" class="quick-categories" role="group" aria-label="Quick category filters" hidden></div>
         </div>
         <div class="board-meta"><span id="count"></span><span id="hint">Drag titles between tiers</span></div>
         <p id="rank-setup" class="setup-note" hidden>To save the order within a tier, run the <a href="https://github.com/Dymon18/tiershelf/blob/main/supabase/migrations/004_tier_order.sql" target="_blank" rel="noopener">SB tier order migration</a> and refresh.</p>

@@ -189,6 +189,23 @@ dialog#editor { width: min(560px, calc(100% - 36px)); }
 .category-options { display: flex; flex-wrap: wrap; gap: .4rem; }
 .category-options label { display: inline-flex; align-items: center; gap: .35rem; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; }
 .category-options input { width: auto; margin: 0; accent-color: var(--accent); }
+.quick-categories { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: .4rem; }
+.quick-categories button {
+  min-height: 36px;
+  padding: .3rem .7rem;
+  border: 1px solid #444a4a;
+  border-radius: 999px;
+  background: var(--surface);
+  color: #e1e5e0;
+  font-size: .875rem;
+  font-weight: 650;
+}
+.quick-categories button:hover { border-color: #929d96; }
+.quick-categories button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: #172010; }
+.quick-categories button[data-excluded] { border-color: var(--accent); background: #392b2b; color: #ffc3ba; }
+.quick-categories button[data-excluded]::before { content: "− "; }
+.quick-categories button[data-quick-filter="clear"] { border-color: transparent; background: transparent; color: var(--muted); }
+.quick-categories button[data-quick-filter="clear"]:hover { color: white; }
 .inline-field { display: flex; gap: .45rem; margin-top: .5rem; }
 .poster-choice img { display: block; width: 76px; max-height: 114px; object-fit: contain; border-radius: 4px; }
 #poster-status { color: var(--muted); font-size: .875rem; margin-bottom: 0; }

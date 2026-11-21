@@ -25,11 +25,12 @@ const tierDescriptions = {
   F: ['Would Not Recommend'],
 }
 const starterCategories = {
-  movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Animation', 'Musical', 'Action'],
+  movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Pixar', 'Animation', 'Musical', 'Action'],
   book: ['Fantasy', 'Sci-fi', 'Mystery', 'Romance', 'Nonfiction'],
   anime: ['Animation', 'Anime', 'K-drama', 'TV Show'],
   game: ['Action', 'Adventure', 'RPG', 'Puzzle', 'Simulation', 'Strategy', 'Co-op'],
 }
+const movieQuickCategories = ['DreamWorks', 'Disney', 'Pixar', 'Studio Ghibli', 'Barbie & Tinkerbell', 'Animation']
 const basicColumns = 'id,title,media_type,grade'
 const detailColumns = basicColumns + ',categories,release_year,wikipedia_url,poster_url'
 const fullColumns = detailColumns + ',author'
@@ -71,7 +72,8 @@ const typeInput = byId('entry-type')
 const categoryFilter = byId('category-filter')
 const filterOptions = byId('filter-options')
 const categoryMatch = byId('category-match')
-const matchAllInput = byId('category-match-all')
+const matchInputs = new Map([...categoryMatch.querySelectorAll('input')].map((input) => [input.value, input]))
+const quickCategories = byId('quick-categories')
 const categoryList = byId('entry-categories')
 const newCategory = byId('new-category')
 const yearInput = byId('entry-year')
@@ -197,15 +199,14 @@ function movieFacetValues(entry, key) {
   return Array.isArray(values) ? values.filter((value) => typeof value === 'string') : []
 }
 
-function renderMovieFilters() {
+function renderMovieFilters(shelf) {
   const panel = byId('movie-filters')
   const focused = document.activeElement?.dataset.movieFacet
   panel.replaceChildren()
   if (filter !== 'movie') return
-  const movies = entries.filter((entry) => entry.media_type === 'movie')
   for (const [key, name] of Object.entries(movieFacets)) {
     const options = new Map()
-    for (const entry of movies) {
+    for (const entry of shelf) {
       for (const value of movieFacetValues(entry, key)) options.set(normalizeTitle(value), value)
     }
     if (!options.has(movieFilterValues.get(key))) movieFilterValues.delete(key)
@@ -229,8 +230,95 @@ function renderMovieFilters() {
   }
 }
 
-function renderCategoryFilter() {
-  renderMovieFilters()
+function categoryMatchMode() {
+  return categoryMatch.querySelector('input:checked').value
+}
+
+function setCategoryMatch(mode) {
+  const input = matchInputs.get(mode) ?? matchInputs.get('any')
+  input.checked = true
+}
+
+function quickCategoryChoices(options, shelf) {
+  const names = new Map(options.map((name) => [categoryKey(name), name]))
+  if (filter === 'movie') {
+    const choices = new Map()
+    for (const label of movieQuickCategories) {
+      const base = label === 'Barbie & Tinkerbell' ? 'Barbie' : label
+      const baseKey = categoryKey(base)
+      const renamed = categoryKey(categoryEditor.label(filter, base))
+      const current = renamed === baseKey ? null : names.get(renamed)
+      const extended = options.find((name) => categoryKey(name).startsWith(baseKey + ' & '))
+      const name = current ?? extended ?? names.get(baseKey)
+      if (name) choices.set(categoryKey(name), label)
+    }
+    return choices
+  }
+
+  const counts = new Map()
+  for (const entry of shelf) {
+    for (const name of categoryEditor.labels(filter, entry.categories ?? [])) {
+      const key = categoryKey(name)
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+  }
+  return new Map([...names].sort(([a], [b]) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0)).slice(0, 5))
+}
+
+function renderQuickCategories(options, shelf, filterCount) {
+  const focused = document.activeElement?.dataset.quickFilter
+  const choices = quickCategoryChoices(options, shelf)
+  const othersKeys = filter === 'movie'
+    ? [...choices].filter(([, label]) => label === 'Animation').map(([key]) => key)
+    : [...choices.keys()]
+  const excluding = categoryMatchMode() === 'exclude'
+  const othersActive = excluding && othersKeys.length === activeCategories.size &&
+    othersKeys.every((key) => activeCategories.has(key))
+  quickCategories.replaceChildren()
+  quickCategories.hidden = categoryFilter.hidden || (!choices.size && !filterCount)
+  if (quickCategories.hidden) return
+
+  let restoreFocus
+  function addChip(id, label, action, pressed, description) {
+    const chip = document.createElement('button')
+    chip.type = 'button'
+    chip.dataset.quickFilter = id
+    chip.textContent = label
+    if (pressed !== undefined) chip.setAttribute('aria-pressed', String(pressed))
+    if (description) chip.title = description
+    chip.addEventListener('click', action)
+    quickCategories.append(chip)
+    if (focused === id) restoreFocus = chip
+    return chip
+  }
+
+  for (const [key, label] of choices) {
+    const ignored = excluding && !othersActive
+    const pressed = !othersActive && activeCategories.has(key)
+    const chip = addChip('category:' + key, label, () => {
+      if (othersActive) clearCategorySelections()
+      if (!activeCategories.delete(key)) activeCategories.add(key)
+      updateShelfView()
+    }, pressed, ignored ? 'Exclude ' + label : undefined)
+    if (ignored && pressed) chip.dataset.excluded = 'true'
+  }
+  if (othersKeys.length) {
+    const description = filter === 'movie' ? 'Hide movies tagged Animation' : 'Hide titles with the featured categories'
+    addChip('others', 'Others', () => {
+      clearCategorySelections()
+      if (!othersActive) {
+        for (const key of othersKeys) activeCategories.add(key)
+        setCategoryMatch('exclude')
+      }
+      updateShelfView()
+    }, othersActive, description)
+  }
+  if (filterCount) addChip('clear', 'Clear filters', clearCategoryFilters)
+  if (focused) (restoreFocus ?? quickCategories.firstElementChild)?.focus({ preventScroll: true })
+}
+
+function renderCategoryFilter(shelf) {
+  renderMovieFilters(shelf)
   const heading = filter === 'book' ? 'Genres' : 'Categories'
   byId('manage-categories').textContent = 'Edit ' + heading.toLowerCase()
   categoryFilter.hidden = ownerMode && !archiveDetails
@@ -245,6 +333,7 @@ function renderCategoryFilter() {
   }
   const count = activeCategories.size + (filter === 'movie' ? movieFilterValues.size : 0)
   byId('category-filter-label').textContent = count ? `${heading} (${count})` : heading
+  renderQuickCategories(options, shelf, count)
   const focused = document.activeElement?.dataset.category
   filterOptions.replaceChildren()
   let restoreFocus
@@ -322,14 +411,17 @@ document.addEventListener('keydown', (event) => {
 function render() {
   queue.setPromotionState(ownerMode && archiveColumns.includes(promotionColumns),
     new Set(entries.map((entry) => entry.source_queue_id).filter(Boolean)))
-  renderCategoryFilter()
-  const query = normalizeTitle(search.value)
   const shelf = entries.filter((entry) => entry.media_type === filter)
+  renderCategoryFilter(shelf)
+  const query = normalizeTitle(search.value)
   const keys = [...activeCategories]
+  const mode = categoryMatchMode()
   const matchCategory = (entry) => {
     if (!keys.length) return true
     const tags = new Set(categoryEditor.labels(entry.media_type, entry.categories ?? []).map(categoryKey))
-    return matchAllInput.checked ? keys.every((key) => tags.has(key)) : keys.some((key) => tags.has(key))
+    if (mode === 'all') return keys.every((key) => tags.has(key))
+    const matches = keys.some((key) => tags.has(key))
+    return mode === 'exclude' ? !matches : matches
   }
   const visible = shelf.filter((entry) =>
     matchCategory(entry) &&
@@ -927,7 +1019,7 @@ autofillButton.addEventListener('click', async () => {
     }
     const knownCategories = categoriesFor(type)
     if (type === 'movie') {
-      for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller', 'Pixar', 'Sony Pictures Animation']) {
+      for (const name of ['Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Romance', 'Sci-fi', 'Thriller', 'Sony Pictures Animation']) {
         const label = categoryEditor.label(type, name)
         if (!knownCategories.some((item) => normalizeTitle(item) === normalizeTitle(label))) knownCategories.push(label)
       }
@@ -1038,7 +1130,7 @@ function rememberShelfView() {
     media: filter,
     categories: [...activeCategories],
     movieFacets: Object.fromEntries(movieFilterValues),
-    matchAllCategories: matchAllInput.checked,
+    categoryMatchMode: categoryMatchMode(),
     search: search.value,
     filtersOpen: categoryFilter.open,
   })
@@ -1071,16 +1163,25 @@ function restoreShelfView() {
     }
   }
   categoryFilter.open = view.filtersOpen === true
-  byId(view.matchAllCategories === true ? 'category-match-all' : 'category-match-any').checked = true
+  setCategoryMatch(view.categoryMatchMode ?? (view.matchAllCategories === true ? 'all' : 'any'))
   search.value = typeof view.search === 'string' ? view.search : ''
+}
+
+function clearCategorySelections() {
+  activeCategories.clear()
+  if (categoryMatchMode() === 'exclude') setCategoryMatch('any')
+}
+
+function clearCategoryFilters() {
+  clearCategorySelections()
+  movieFilterValues.clear()
+  updateShelfView()
 }
 
 function setMediaFilter(type, animate = false) {
   setShelfMedia(type)
-  activeCategories.clear()
-  movieFilterValues.clear()
   categoryFilter.open = false
-  updateShelfView()
+  clearCategoryFilters()
   if (animate) enterView(board)
 }
 filters.forEach((button) => button.addEventListener('click', () => {
@@ -1089,11 +1190,7 @@ filters.forEach((button) => button.addEventListener('click', () => {
 search.addEventListener('input', updateShelfView)
 categoryMatch.addEventListener('change', updateShelfView)
 categoryFilter.addEventListener('toggle', rememberShelfView)
-byId('clear-categories').addEventListener('click', () => {
-  activeCategories.clear()
-  movieFilterValues.clear()
-  updateShelfView()
-})
+byId('clear-categories').addEventListener('click', clearCategoryFilters)
 
 function setMode(isOwner, records, viewerQueue = null, viewerKey = null) {
   frameVersion++
