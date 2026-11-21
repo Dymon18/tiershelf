@@ -1,5 +1,5 @@
 export const media = {
-  book: { name: 'Book', label: 'Books', phrase: 'a book', icons: ['📚', '🪱', '📖'] },
+  book: { name: 'Book', label: 'Books', phrase: 'a book', icons: ['📚', '🐛', '📖'] },
   movie: { name: 'Movie', label: 'Movies', phrase: 'a movie', icons: ['🎥', '🍿'] },
   anime: { name: 'Series', label: 'Series', phrase: 'a series', icons: ['📺', '📀'] },
   game: { name: 'Game', label: 'Games', phrase: 'a game', icons: ['🎮', '🕹️'] },
