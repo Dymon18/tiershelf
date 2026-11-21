@@ -14,6 +14,15 @@ const grades = {
   S: '#f1a59c', A: '#f3bc91', B: '#f0db97', C: '#cfe69e',
   D: '#a6dbbc', E: '#a6cde8', F: '#c4b9ed',
 }
+const tierDescriptions = {
+  S: ['GOATs 🐐', 'Best of the best. An unforgettable experience. Life-changing.'],
+  A: ['Would Revisit & Recommend', 'Loved it. Would gladly experience it again and recommend it to others.'],
+  B: ['Would Recommend', "A solid experience worth recommending, even if I wouldn't revisit it."],
+  C: ['Enjoyed, but One and Done', "The middle ground. Enjoyed it, but probably wouldn't revisit it."],
+  D: ['No Regrets', "Below average, but I don't regret giving it a chance."],
+  E: ['Time Better Spent Elsewhere'],
+  F: ['Would Not Recommend'],
+}
 const starterCategories = {
   movie: ['Studio Ghibli', 'Barbie', 'Marvel', 'DreamWorks', 'Disney', 'Animation', 'Musical', 'Action'],
   book: ['Fantasy', 'Sci-fi', 'Mystery', 'Romance', 'Nonfiction'],
@@ -252,6 +261,54 @@ function tierOrder(a, b) {
   return (a.tier_position ?? Infinity) - (b.tier_position ?? Infinity)
 }
 
+function createTierHeading(grade) {
+  const heading = document.createElement('h2')
+  heading.id = `tier-${grade}`
+  heading.className = 'grade'
+  heading.setAttribute('aria-label', `Tier ${grade}`)
+
+  const trigger = document.createElement('button')
+  trigger.type = 'button'
+  trigger.className = 'grade-label'
+  trigger.textContent = grade
+  trigger.setAttribute('aria-label', `Tier ${grade} description`)
+  trigger.setAttribute('aria-describedby', `tier-description-${grade}`)
+
+  const tooltip = document.createElement('span')
+  tooltip.id = `tier-description-${grade}`
+  tooltip.className = 'tier-tooltip'
+  tooltip.setAttribute('role', 'tooltip')
+  tooltip.hidden = true
+  const [label, description] = tierDescriptions[grade]
+  const title = document.createElement('strong')
+  title.textContent = label
+  tooltip.append(title)
+  if (description) {
+    const text = document.createElement('span')
+    text.textContent = description
+    tooltip.append(text)
+  }
+
+  const show = () => { tooltip.hidden = false }
+  heading.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') show() })
+  heading.addEventListener('pointerleave', () => { if (!trigger.matches(':focus-visible')) tooltip.hidden = true })
+  trigger.addEventListener('focus', show)
+  trigger.addEventListener('click', show)
+  trigger.addEventListener('blur', () => { if (!heading.matches(':hover')) tooltip.hidden = true })
+  heading.append(trigger, tooltip)
+  return heading
+}
+
+function closeTierTooltips(target) {
+  for (const tooltip of board.querySelectorAll('.tier-tooltip:not([hidden])')) {
+    if (!tooltip.parentElement.contains(target)) tooltip.hidden = true
+  }
+}
+document.addEventListener('pointerdown', (event) => closeTierTooltips(event.target))
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeTierTooltips(null)
+})
+
 function render() {
   queue.setPromotionState(ownerMode && archiveColumns.includes(promotionColumns),
     new Set(entries.map((entry) => entry.source_queue_id).filter(Boolean)))
@@ -285,11 +342,7 @@ function render() {
     row.setAttribute('aria-labelledby', `tier-${grade}`)
     row.style.setProperty('--grade', color)
 
-    const heading = document.createElement('h2')
-    heading.id = `tier-${grade}`
-    heading.className = 'grade'
-    heading.textContent = grade
-    heading.setAttribute('aria-label', `Tier ${grade}`)
+    const heading = createTierHeading(grade)
 
     const cards = document.createElement('div')
     cards.className = 'cards'
